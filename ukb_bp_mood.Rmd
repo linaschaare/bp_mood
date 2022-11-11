@@ -1,0 +1,2972 @@
+---
+title: "ukb_bp_mood_prereg_overview"
+author: "lina schaare"
+date: "11/21/2019"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    df_print: kable
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/data/pt_02087/ukbiobank/")
+
+.libPaths(c("/data/u_schaare_software/R/x86_64-pc-linux-gnu-library/4.0", "/afs/cbs.mpg.de/software/r/4.1.1/ubuntu-bionic-amd64/lib/R/library"))
+
+## install and load packages
+# install.packages("tidyverse", dependencies = T)
+# install.packages("grid")
+# install.packages("psych")
+# install.packages("stats")
+# install.packages("effsize")
+# install.packages("wesanderson")
+# install.packages("sjPlot")
+
+library(tidyverse)
+library(grid)
+library(psych)
+library(stats)
+library(jtools)
+library(gridExtra)
+library(table1)
+library(wesanderson)
+library(sjPlot)
+
+theme_set(theme_classic())
+
+
+knitr::opts_chunk$set(
+  fig.width = 10,
+  fig.height = 8,
+  dev = "png",
+  dev.args=list(bg="transparent")
+  )
+
+```
+
+
+# 0. Create reduced dataset from raw data
+
+```{r, eval=FALSE, echo=FALSE}
+### load raw data (full sample) 
+bd <- read_tsv("data/raw/ukb40533.tab")
+
+# save dataframe under a different name
+bd1 <- bd
+
+# load additional batches of data
+bd <- read_tsv("data/raw/ukb40535.tab")
+
+# combine the two datasets by matching IDs
+data_combined <- left_join(bd1, bd, by="f.eid")
+bd2 <- bd
+
+bd <- read_tsv("data/raw/ukb40536.tab")
+data_combined <- left_join(data_combined, bd, by="f.eid")
+
+# reduce data complexity by selecting only the relevant variables
+### ID, blood pressure and pulse rate
+ukb <- data_combined %>% select(f.eid, starts_with("f.4080."), starts_with("f.4079."), starts_with("f.102."),
+### Covariates, descriptives and exclusion variables
+                                f.31.0.0, starts_with("f.21003."), starts_with("f.6138."), starts_with("f.738."), starts_with("f.189."),
+                                starts_with("f.21000."), starts_with("f.2443."), starts_with("f.20002."), starts_with("f.21001."), 
+                                starts_with("f.20116."), starts_with("f.1558."), starts_with("f.22040."), starts_with("f.6177."), 
+                                starts_with("f.6153."), starts_with("f.20003."), starts_with("f.6150."), starts_with("f.20544."),
+                                starts_with("f.20001."), starts_with("f.6141."), starts_with("f.709."), starts_with("f.53."), 
+                                starts_with("f.54."), starts_with("f.1200."),
+### Depressive symptoms, current and probable lifetime major depression
+                                starts_with("f.2050."), starts_with("f.2060."), starts_with("f.2070."), starts_with("f.2080."),
+                                starts_with("f.20126."),
+### PHQ-9 variables
+                                starts_with("f.20514."), starts_with("f.20510."), starts_with("f.20517."), starts_with("f.20519."), 
+                                starts_with("f.20511."), starts_with("f.20507."), starts_with("f.20508."), starts_with("f.20518."), 
+                                starts_with("f.20513."),
+### Well-being variables
+                                starts_with("f.4526."), starts_with("f.4548."), starts_with("f.4537."), starts_with("f.4559."),
+                                starts_with("f.4570."), starts_with("f.4581."),
+### Neuroticism
+                                starts_with("f.20127."), starts_with("f.1920."), starts_with("f.1930."), starts_with("f.1940."), starts_with("f.1950."),
+                                starts_with("f.1960."), starts_with("f.1970."), starts_with("f.1980."), starts_with("f.1990."), starts_with("f.2000."), 
+                                starts_with("f.2010."), starts_with("f.2020."), starts_with("f.2030."),
+### Hariri task (z-stat variables)
+                                starts_with("f.25768."), starts_with("f.25764."), starts_with("f.25762."), starts_with("f.25766."), 
+                                starts_with("f.25054."), starts_with("f.25046."), starts_with("f.25042."), starts_with("f.25050."),
+### Hospital records (primary and secondary ICD10 diagnoses)
+                                starts_with("f.41202."), starts_with("f.41204."),
+### Death records
+                                starts_with("f.40000."), starts_with("f.40001."), starts_with("f.40007."))
+# save reduced data frame
+save(ukb, file = "data/ukb_bp_mood_prereg_v3.RData")
+
+```
+
+# 1. Load data
+
+```{r}
+
+load("schaare/bp_mood_prereg/data/ukb_bp_mood_prereg_v3.RData")
+
+```
+
+# 1.1 Remove participants without consent
+
+```{r}
+p_excl <- read.csv("data/raw/w37721_20200820.csv", header = F)
+p_excl <- p_excl$V1
+idx <- na.exclude(match(p_excl,ukb$f.eid))
+
+ukb = ukb[-idx,]
+
+```
+
+# 2.0 Recode factor levels and add meaningful labels (Biobank format)
+
+```{r, echo=FALSE}
+lvl.0009 <- c(0,1)
+lbl.0009 <- c("Female","Male")
+ukb$f.31.0.0 <- ordered(ukb$f.31.0.0, levels=lvl.0009, labels=lbl.0009)
+
+lvl.100605 <- c(-7,-3,1,2,3,4)
+lbl.100605 <- c("None of the above","Prefer not to answer","Heart attack","Angina","Stroke","High blood pressure")
+ukb$f.6150.0.0 <- ordered(ukb$f.6150.0.0, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.0.1 <- ordered(ukb$f.6150.0.1, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.0.2 <- ordered(ukb$f.6150.0.2, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.0.3 <- ordered(ukb$f.6150.0.3, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.1.0 <- ordered(ukb$f.6150.1.0, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.1.1 <- ordered(ukb$f.6150.1.1, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.1.2 <- ordered(ukb$f.6150.1.2, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.1.3 <- ordered(ukb$f.6150.1.3, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.2.0 <- ordered(ukb$f.6150.2.0, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.2.1 <- ordered(ukb$f.6150.2.1, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.2.2 <- ordered(ukb$f.6150.2.2, levels=lvl.100605, labels=lbl.100605)
+ukb$f.6150.2.3 <- ordered(ukb$f.6150.2.3, levels=lvl.100605, labels=lbl.100605)
+
+lvl.100349 <- c(-3,-1,0,1)
+lbl.100349 <- c("Prefer not to answer","Do not know","No","Yes")
+ukb$f.2443.0.0 <- ordered(ukb$f.2443.0.0, levels=lvl.100349, labels=lbl.100349)
+ukb$f.2443.1.0 <- ordered(ukb$f.2443.1.0, levels=lvl.100349, labels=lbl.100349)
+ukb$f.2443.2.0 <- ordered(ukb$f.2443.2.0, levels=lvl.100349, labels=lbl.100349)
+
+lvl.100294 <- c(-3,-1,1,2,3,4,5)
+lbl.100294 <- c("Prefer not to answer","Do not know","Less than 18,000","18,000 to 30,999","31,000 to 51,999","52,000 to 100,000","Greater than 100,000")
+ukb$f.738.0.0 <- ordered(ukb$f.738.0.0, levels=lvl.100294, labels=lbl.100294)
+ukb$f.738.1.0 <- ordered(ukb$f.738.1.0, levels=lvl.100294, labels=lbl.100294)
+ukb$f.738.2.0 <- ordered(ukb$f.738.2.0, levels=lvl.100294, labels=lbl.100294)
+
+lvl.1001 <- c(-3,-1,1,2,3,4,5,6,1001,1002,1003,2001,2002,2003,2004,3001,3002,3003,3004,4001,4002,4003)
+lbl.1001 <- c("Prefer not to answer","Do not know","White","Mixed","Asian or Asian British","Black or Black British","Chinese","Other ethnic group","British","Irish","Any other white background","White and Black Caribbean","White and Black African","White and Asian","Any other mixed background","Indian","Pakistani","Bangladeshi","Any other Asian background","Caribbean","African","Any other Black background")
+ukb$f.21000.0.0 <- ordered(ukb$f.21000.0.0, levels=lvl.1001, labels=lbl.1001)
+ukb$f.21000.1.0 <- ordered(ukb$f.21000.1.0, levels=lvl.1001, labels=lbl.1001)
+ukb$f.21000.2.0 <- ordered(ukb$f.21000.2.0, levels=lvl.1001, labels=lbl.1001)
+
+lvl.0090 <- c(-3,0,1,2)
+lbl.0090 <- c("Prefer not to answer","Never","Previous","Current")
+ukb$f.20116.0.0 <- ordered(ukb$f.20116.0.0, levels=lvl.0090, labels=lbl.0090)
+ukb$f.20116.1.0 <- ordered(ukb$f.20116.1.0, levels=lvl.0090, labels=lbl.0090)
+ukb$f.20116.2.0 <- ordered(ukb$f.20116.2.0, levels=lvl.0090, labels=lbl.0090)
+
+lvl.100402 <- c(-3,1,2,3,4,5,6)
+lbl.100402 <- c("Prefer not to answer","Daily or almost daily","Three or four times a week","Once or twice a week","One to three times a month","Special occasions only","Never")
+ukb$f.1558.0.0 <- ordered(ukb$f.1558.0.0, levels=lvl.100402, labels=lbl.100402)
+ukb$f.1558.1.0 <- ordered(ukb$f.1558.1.0, levels=lvl.100402, labels=lbl.100402)
+ukb$f.1558.2.0 <- ordered(ukb$f.1558.2.0, levels=lvl.100402, labels=lbl.100402)
+
+lvl.100695 <- c(0,1,2,3,4,5)
+lbl.100695 <- c("No Bipolar or Depression","Bipolar I Disorder","Bipolar II Disorder","Probable Recurrent major depression (severe)",
+                "Probable Recurrent major depression (moderate)","Single Probable major depression episode")
+ukb$f.20126.0.0 <- ordered(ukb$f.20126.0.0, levels=lvl.100695, labels=lbl.100695)
+
+#lvl.100343 <- c(-3,1,2,3)
+#lbl.100343 <- c("Prefer not to answer","Never/rarely","Sometimes","Usually")
+#ukb$f.1200.0.0 <- ordered(ukb$f.1200.0.0, levels=lvl.100343, labels=lbl.100343)
+#ukb$f.1200.1.0 <- ordered(ukb$f.1200.1.0, levels=lvl.100343, labels=lbl.100343)
+#ukb$f.1200.2.0 <- ordered(ukb$f.1200.2.0, levels=lvl.100343, labels=lbl.100343)
+
+#lvl.100305 <- c(-7,-3,1,2,3,4,5,6)
+#lbl.100305 <- c("None of the above","Prefer not to answer","College or University degree","A levels/AS levels or equivalent","O levels/GCSEs or equivalent", "CSEs or equivalent","NVQ or HND or HNC or equivalent","Other professional qualifications eg: nursing, teaching")
+#ukb$f.6138.0.0 <- ordered(ukb$f.6138.0.0, levels=lvl.100305, labels=lbl.100305)
+#ukb$f.6138.0.1 <- ordered(ukb$f.6138.0.1, levels=lvl.100305, labels=lbl.100305)
+#ukb$f.6138.0.2 <- ordered(ukb$f.6138.0.2, levels=lvl.100305, labels=lbl.100305)
+#ukb$f.6138.0.3 <- ordered(ukb$f.6138.0.3, levels=lvl.100305, labels=lbl.100305)
+#ukb$f.6138.0.4 <- ordered(ukb$f.6138.0.4, levels=lvl.100305, labels=lbl.100305)
+#ukb$f.6138.0.5 <- ordered(ukb$f.6138.0.5, levels=lvl.100305, labels=lbl.100305)
+
+```
+# 2.0.1 Recode covariates
+```{r, echo=FALSE}
+# Educational attainment
+items <- c("f.6138.0.0")
+# recode -3 ("Prefer not to answer") and -7 ("None of the above") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -7))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -3))
+# merge levels to highest degree if multiple answers were given
+edu <- data.frame(ukb$f.6138.0.0,ukb$f.6138.0.1, ukb$f.6138.0.2, ukb$f.6138.0.3, ukb$f.6138.0.4, ukb$f.6138.0.5)
+edu_cols <- edu %>% select(c(1:6)) %>% names()
+edu <- edu  %>% mutate(education.0=pmax(!!!rlang::syms(edu_cols), na.rm = TRUE))
+ukb <- mutate(ukb, education.0 = edu$education.0)
+
+rm("edu", "edu_cols")
+
+# Race/Ethnicity
+items <- c("f.21000.0.0")
+# recode -3 ("Prefer not to answer") and -1 ("Do not know") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -1))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -3))
+# recode to white and other
+ukb <- mutate(ukb, ethn.0 = ifelse(f.21000.0.0 == "White" | f.21000.0.0 == "British" | f.21000.0.0 == "Irish" |                                     
+                                         f.21000.0.0 == "Any other white background", 1, 0))
+
+# Household income
+items <- c("f.738.0.0","f.738.1.0","f.738.2.0")
+# recode -3 ("Prefer not to answer") and -1 ("Do not know") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -1))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -3))
+
+# Insomnia
+items <- c("f.1200.0.0","f.1200.1.0","f.1200.2.0")
+# recode -3 ("Prefer not to answer") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -3))
+
+
+```
+
+# 2.1. Psychiatric Diagnosis
+### psychiatric diagnosis except for non-bipolar depression at initial assessment [http://biobank.ctsu.ox.ac.uk/crystal/field.cgi?id=20002]
+
+```{r, echo=FALSE}
+### depression (from nurse interview)
+ukb$depr_l.0 <- ifelse(is.na(ukb$f.20002.0.0) == T, NA, 0)
+ukb$depr_l.0[ukb$f.20002.0.0 == 1286 | ukb$f.20002.0.1 == 1286 | ukb$f.20002.0.2 == 1286 |
+                 ukb$f.20002.0.3 == 1286 | ukb$f.20002.0.4 == 1286 | ukb$f.20002.0.5 == 1286 |
+                 ukb$f.20002.0.6 == 1286 | ukb$f.20002.0.7 == 1286 | ukb$f.20002.0.8 == 1286 |
+                 ukb$f.20002.0.9 == 1286 | ukb$f.20002.0.10 == 1286 | ukb$f.20002.0.11 == 1286 |
+                 ukb$f.20002.0.12 == 1286 | ukb$f.20002.0.13 == 1286 | ukb$f.20002.0.14 == 1286 |
+                 ukb$f.20002.0.15 == 1286 | ukb$f.20002.0.16 == 1286 | ukb$f.20002.0.17 == 1286 |
+                 ukb$f.20002.0.18 == 1286 | ukb$f.20002.0.19 == 1286 | ukb$f.20002.0.20 == 1286 |
+                 ukb$f.20002.0.21 == 1286 | ukb$f.20002.0.22 == 1286 | ukb$f.20002.0.23 == 1286 |
+                 ukb$f.20002.0.24 == 1286 | ukb$f.20002.0.25 == 1286 | ukb$f.20002.0.26 == 1286 |
+                 ukb$f.20002.0.27 == 1286 | ukb$f.20002.0.28 == 1286 | ukb$f.20002.0.29 == 1286 |
+                 ukb$f.20002.0.30 == 1286 | ukb$f.20002.0.31 == 1286 | ukb$f.20002.0.32 == 1286] <- 1
+
+### probable lifetime major depression
+table(ukb$f.20126.0.0) # -> 379,554 missing values
+
+# plot distribution
+ggplot(ukb, aes(x=f.20126.0.0)) + geom_bar() + xlab("Probable lifetime depression status") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# create variable for probable lifetime major depression
+ukb <- mutate(ukb, depr_l_p.0 = ifelse(f.20126.0.0 == "Probable Recurrent major depression (severe)" | 
+                                         f.20126.0.0 == "Probable Recurrent major depression (moderate)" |                                        
+                                         f.20126.0.0 == "Single Probable major depression episode", 1, 0))
+```
+
+# 2.2. Neurological Disease
+### Stroke or any other neurological disease at initial assessment [http://biobank.ctsu.ox.ac.uk/crystal/field.cgi?id=6150, http://biobank.ctsu.ox.ac.uk/crystal/field.cgi?id=20002]
+#### Stroke
+```{r, echo=FALSE}
+### stroke
+# diagnosed stroke from touchscreen question
+ukb$stroke_ts.0 <- ifelse(is.na(ukb$f.6150.0.0) == T, NA, 0)
+ukb$stroke_ts.0[ukb$f.6150.0.0 == "Stroke" | ukb$f.6150.0.1 == "Stroke" | ukb$f.6150.0.2 == "Stroke" | ukb$f.6150.0.3 == "Stroke"] <- 1
+
+#table(ukb$stroke_ts.0)
+
+# diagnosed stroke from nurse interview
+ukb$stroke.0 <- ifelse(is.na(ukb$f.20002.0.0) == T, NA, 0)
+ukb$stroke.0[ukb$f.20002.0.0 == 1081 | ukb$f.20002.0.1 == 1081 | ukb$f.20002.0.2 == 1081 |
+                 ukb$f.20002.0.3 == 1081 | ukb$f.20002.0.4 == 1081 | ukb$f.20002.0.5 == 1081 |
+                 ukb$f.20002.0.6 == 1081 | ukb$f.20002.0.7 == 1081 | ukb$f.20002.0.8 == 1081 |
+                 ukb$f.20002.0.9 == 1081 | ukb$f.20002.0.10 == 1081 | ukb$f.20002.0.11 == 1081 |
+                 ukb$f.20002.0.12 == 1081 | ukb$f.20002.0.13 == 1081 | ukb$f.20002.0.14 == 1081 |
+                 ukb$f.20002.0.15 == 1081 | ukb$f.20002.0.16 == 1081 | ukb$f.20002.0.17 == 1081 |
+                 ukb$f.20002.0.18 == 1081 | ukb$f.20002.0.19 == 1081 | ukb$f.20002.0.20 == 1081 |
+                 ukb$f.20002.0.21 == 1081 | ukb$f.20002.0.22 == 1081 | ukb$f.20002.0.23 == 1081 |
+                 ukb$f.20002.0.24 == 1081 | ukb$f.20002.0.25 == 1081 | ukb$f.20002.0.26 == 1081 |
+                 ukb$f.20002.0.27 == 1081 | ukb$f.20002.0.28 == 1081 | ukb$f.20002.0.29 == 1081 |
+                 ukb$f.20002.0.30 == 1081 | ukb$f.20002.0.31 == 1081 | ukb$f.20002.0.32 == 1081] <- 1
+
+table(ukb$stroke.0)
+```
+
+# 2.3. Cardiovascular Disease
+### Cardiovascular disease at initial assessment
+#### Heart attack
+```{r, echo=FALSE}
+### heart attack from touchscreen question
+ukb$heartattack_ts.0 <- ifelse(is.na(ukb$f.6150.0.0) == T, NA, 0)
+ukb$heartattack_ts.0[ukb$f.6150.0.0 == "Heart attack" | ukb$f.6150.0.1 == "Heart attack" | ukb$f.6150.0.2 == "Heart attack" | 
+                       ukb$f.6150.0.3 == "Heart attack"] <- 1
+
+#table(ukb$heartattack_ts.0)
+
+# diagnosed heart attack/myocardial infarction from nurse interview
+ukb$heartattack.0 <- ifelse(is.na(ukb$f.20002.0.0) == T, NA, 0)
+ukb$heartattack.0[ukb$f.20002.0.0 == 1075 | ukb$f.20002.0.1 == 1075 | ukb$f.20002.0.2 == 1075 |
+                    ukb$f.20002.0.3 == 1075 | ukb$f.20002.0.4 == 1075 | ukb$f.20002.0.5 == 1075 |
+                    ukb$f.20002.0.6 == 1075 | ukb$f.20002.0.7 == 1075 | ukb$f.20002.0.8 == 1075 |
+                    ukb$f.20002.0.9 == 1075 | ukb$f.20002.0.10 == 1075 | ukb$f.20002.0.11 == 1075 |
+                    ukb$f.20002.0.12 == 1075 | ukb$f.20002.0.13 == 1075 | ukb$f.20002.0.14 == 1075 |
+                    ukb$f.20002.0.15 == 1075 | ukb$f.20002.0.16 == 1075 | ukb$f.20002.0.17 == 1075 |
+                    ukb$f.20002.0.18 == 1075 | ukb$f.20002.0.19 == 1075 | ukb$f.20002.0.20 == 1075 |
+                    ukb$f.20002.0.21 == 1075 | ukb$f.20002.0.22 == 1075 | ukb$f.20002.0.23 == 1075 |
+                    ukb$f.20002.0.24 == 1075 | ukb$f.20002.0.25 == 1075 | ukb$f.20002.0.26 == 1075 |
+                    ukb$f.20002.0.27 == 1075 | ukb$f.20002.0.28 == 1075 | ukb$f.20002.0.29 == 1075 |
+                    ukb$f.20002.0.30 == 1075 | ukb$f.20002.0.31 == 1075 | ukb$f.20002.0.32 == 1075] <- 1
+
+table(ukb$heartattack.0)
+```
+#### Angina pectoris
+```{r, echo=FALSE}
+### history of CHD
+# diagnosed angina from touchscreen question
+ukb$angina_ts.0 <- ifelse(is.na(ukb$f.6150.0.0) == T, NA, 0)
+ukb$angina_ts.0[ukb$f.6150.0.0 == "Angina" | ukb$f.6150.0.1 == "Angina" | ukb$f.6150.0.2 == "Angina" | ukb$f.6150.0.3 == "Angina"] <- 1
+
+# diagnosed angina from nurse interview
+ukb$angina.0 <- ifelse(is.na(ukb$f.20002.0.0) == T, NA, 0)
+ukb$angina.0[ukb$f.20002.0.0 == 1074 | ukb$f.20002.0.1 == 1074 | ukb$f.20002.0.2 == 1074 |
+                 ukb$f.20002.0.3 == 1074 | ukb$f.20002.0.4 == 1074 | ukb$f.20002.0.5 == 1074 |
+                 ukb$f.20002.0.6 == 1074 | ukb$f.20002.0.7 == 1074 | ukb$f.20002.0.8 == 1074 |
+                 ukb$f.20002.0.9 == 1074 | ukb$f.20002.0.10 == 1074 | ukb$f.20002.0.11 == 1074 |
+                 ukb$f.20002.0.12 == 1074 | ukb$f.20002.0.13 == 1074 | ukb$f.20002.0.14 == 1074 |
+                 ukb$f.20002.0.15 == 1074 | ukb$f.20002.0.16 == 1074 | ukb$f.20002.0.17 == 1074 |
+                 ukb$f.20002.0.18 == 1074 | ukb$f.20002.0.19 == 1074 | ukb$f.20002.0.20 == 1074 |
+                 ukb$f.20002.0.21 == 1074 | ukb$f.20002.0.22 == 1074 | ukb$f.20002.0.23 == 1074 |
+                 ukb$f.20002.0.24 == 1074 | ukb$f.20002.0.25 == 1074 | ukb$f.20002.0.26 == 1074 |
+                 ukb$f.20002.0.27 == 1074 | ukb$f.20002.0.28 == 1074 | ukb$f.20002.0.29 == 1074 |
+                 ukb$f.20002.0.30 == 1074 | ukb$f.20002.0.31 == 1074 | ukb$f.20002.0.32 == 1074] <- 1
+
+table(ukb$angina.0)
+```
+#### Diagnosed CHD (angina (1074), heart attack/MI (1075), heart failure/pulmonary odema (1076)) 
+```{r, echo=FALSE}
+# diagnosed CHD (angina (1074), heart attack/MI (1075), heart failure/pulmonary odema (1076)) from nurse interview
+ukb$chd.0 <- ifelse(is.na(ukb$f.20002.0.0) == T, NA, 0)
+ukb$chd.0[ukb$f.20002.0.0 == 1074 | ukb$f.20002.0.1 == 1074 | ukb$f.20002.0.2 == 1074 |
+            ukb$f.20002.0.3 == 1074 | ukb$f.20002.0.4 == 1074 | ukb$f.20002.0.5 == 1074 |
+            ukb$f.20002.0.6 == 1074 | ukb$f.20002.0.7 == 1074 | ukb$f.20002.0.8 == 1074 |
+            ukb$f.20002.0.9 == 1074 | ukb$f.20002.0.10 == 1074 | ukb$f.20002.0.11 == 1074 |
+            ukb$f.20002.0.12 == 1074 | ukb$f.20002.0.13 == 1074 | ukb$f.20002.0.14 == 1074 |
+            ukb$f.20002.0.15 == 1074 | ukb$f.20002.0.16 == 1074 | ukb$f.20002.0.17 == 1074 |
+            ukb$f.20002.0.18 == 1074 | ukb$f.20002.0.19 == 1074 | ukb$f.20002.0.20 == 1074 |
+            ukb$f.20002.0.21 == 1074 | ukb$f.20002.0.22 == 1074 | ukb$f.20002.0.23 == 1074 |
+            ukb$f.20002.0.24 == 1074 | ukb$f.20002.0.25 == 1074 | ukb$f.20002.0.26 == 1074 |
+            ukb$f.20002.0.27 == 1074 | ukb$f.20002.0.28 == 1074 | ukb$f.20002.0.29 == 1074 |
+            ukb$f.20002.0.30 == 1074 | ukb$f.20002.0.31 == 1074 | ukb$f.20002.0.32 == 1074 |
+            ukb$f.20002.0.0 == 1075| ukb$f.20002.0.1 == 1075| ukb$f.20002.0.2 == 1075|
+            ukb$f.20002.0.3 == 1075| ukb$f.20002.0.4 == 1075| ukb$f.20002.0.5 == 1075|
+            ukb$f.20002.0.6 == 1075| ukb$f.20002.0.7 == 1075| ukb$f.20002.0.8 == 1075|
+            ukb$f.20002.0.9 == 1075| ukb$f.20002.0.10 == 1075| ukb$f.20002.0.11 == 1075|
+            ukb$f.20002.0.12 == 1075| ukb$f.20002.0.13 == 1075| ukb$f.20002.0.14 == 1075|
+            ukb$f.20002.0.15 == 1075| ukb$f.20002.0.16 == 1075| ukb$f.20002.0.17 == 1075|
+            ukb$f.20002.0.18 == 1075| ukb$f.20002.0.19 == 1075| ukb$f.20002.0.20 == 1075|
+            ukb$f.20002.0.21 == 1075| ukb$f.20002.0.22 == 1075| ukb$f.20002.0.23 == 1075|
+            ukb$f.20002.0.24 == 1075| ukb$f.20002.0.25 == 1075| ukb$f.20002.0.26 == 1075|
+            ukb$f.20002.0.27 == 1075| ukb$f.20002.0.28 == 1075| ukb$f.20002.0.29 == 1075|
+            ukb$f.20002.0.30 == 1075| ukb$f.20002.0.31 == 1075| ukb$f.20002.0.32 == 1075|
+            ukb$f.20002.0.0 == 1076| ukb$f.20002.0.1 == 1076| ukb$f.20002.0.2 == 1076|
+            ukb$f.20002.0.3 == 1076| ukb$f.20002.0.4 == 1076| ukb$f.20002.0.5 == 1076|
+            ukb$f.20002.0.6 == 1076| ukb$f.20002.0.7 == 1076| ukb$f.20002.0.8 == 1076|
+            ukb$f.20002.0.9 == 1076| ukb$f.20002.0.10 == 1076| ukb$f.20002.0.11 == 1076|
+            ukb$f.20002.0.12 == 1076| ukb$f.20002.0.13 == 1076| ukb$f.20002.0.14 == 1076|
+            ukb$f.20002.0.15 == 1076| ukb$f.20002.0.16 == 1076| ukb$f.20002.0.17 == 1076|
+            ukb$f.20002.0.18 == 1076| ukb$f.20002.0.19 == 1076| ukb$f.20002.0.20 == 1076|
+            ukb$f.20002.0.21 == 1076| ukb$f.20002.0.22 == 1076| ukb$f.20002.0.23 == 1076|
+            ukb$f.20002.0.24 == 1076| ukb$f.20002.0.25 == 1076| ukb$f.20002.0.26 == 1076|
+            ukb$f.20002.0.27 == 1076| ukb$f.20002.0.28 == 1076| ukb$f.20002.0.29 == 1076|
+            ukb$f.20002.0.30 == 1076| ukb$f.20002.0.31 == 1076| ukb$f.20002.0.32 == 1076] <- 1
+
+table(ukb$chd.0)
+```
+#### Hypertension (at baseline and imaging visit)
+```{r, echo=FALSE}
+### Hypertension
+# diagnosed high bp from touchscreen question
+ukb$high_bp.0 <- ifelse(is.na(ukb$f.6150.0.0) == T, NA, 0)
+ukb$high_bp.0[ukb$f.6150.0.0 == "High blood pressure" | ukb$f.6150.0.1 == "High blood pressure" | 
+                ukb$f.6150.0.2 == "High blood pressure" | ukb$f.6150.0.3 == "High blood pressure"] <- 1
+ukb$high_bp.2 <- ifelse(is.na(ukb$f.6150.2.0) == T, NA, 0)
+ukb$high_bp.2[ukb$f.6150.2.0 == "High blood pressure" | ukb$f.6150.2.1 == "High blood pressure" | 
+                ukb$f.6150.2.2 == "High blood pressure" | ukb$f.6150.2.3 == "High blood pressure"] <- 1
+
+table(ukb$high_bp.0)
+table(ukb$high_bp.2)
+
+# diagnosed hypertension from nurse interview
+ukb$htn.0 <- ifelse(is.na(ukb$f.20002.0.0) == T, NA, 0)
+ukb$htn.0[ukb$f.20002.0.0 == 1065 | ukb$f.20002.0.1 == 1065 | ukb$f.20002.0.2 == 1065 |
+                 ukb$f.20002.0.3 == 1065 | ukb$f.20002.0.4 == 1065 | ukb$f.20002.0.5 == 1065 |
+                 ukb$f.20002.0.6 == 1065 | ukb$f.20002.0.7 == 1065 | ukb$f.20002.0.8 == 1065 |
+                 ukb$f.20002.0.9 == 1065 | ukb$f.20002.0.10 == 1065 | ukb$f.20002.0.11 == 1065 |
+                 ukb$f.20002.0.12 == 1065 | ukb$f.20002.0.13 == 1065 | ukb$f.20002.0.14 == 1065 |
+                 ukb$f.20002.0.15 == 1065 | ukb$f.20002.0.16 == 1065 | ukb$f.20002.0.17 == 1065 |
+                 ukb$f.20002.0.18 == 1065 | ukb$f.20002.0.19 == 1065 | ukb$f.20002.0.20 == 1065 |
+                 ukb$f.20002.0.21 == 1065 | ukb$f.20002.0.22 == 1065 | ukb$f.20002.0.23 == 1065 |
+                 ukb$f.20002.0.24 == 1065 | ukb$f.20002.0.25 == 1065 | ukb$f.20002.0.26 == 1065 |
+                 ukb$f.20002.0.27 == 1065 | ukb$f.20002.0.28 == 1065 | ukb$f.20002.0.29 == 1065 |
+                 ukb$f.20002.0.30 == 1065 | ukb$f.20002.0.31 == 1065 | ukb$f.20002.0.32 == 1065] <- 1
+```
+
+# 2.4. Any Disease
+### Systemic diseases (e.g. chronic obstructive pulmonary disease, renal disease) or malignant disease at initial assessment [http://biobank.ctsu.ox.ac.uk/crystal/field.cgi?id=20002]
+
+```{r, echo=FALSE}
+# Any excluded disease in f.20002
+excl <- read.csv("schaare/bp_mood_prereg/data/coding6_exclusion", header = F)
+ukb <- mutate(ukb, excl_1stcode.0 = ifelse(f.20002.0.0 %in% excl$V1, f.20002.0.0, NA)) #shows the code of the first disease
+
+ukb <- mutate(ukb, excl.0 = ifelse(f.20002.0.0 %in% excl$V1 | f.20002.0.1 %in% excl$V1 | f.20002.0.2 %in% excl$V1 |
+                                    f.20002.0.3 %in% excl$V1 | f.20002.0.4 %in% excl$V1 | f.20002.0.5 %in% excl$V1 |
+                                    f.20002.0.6 %in% excl$V1 | f.20002.0.7 %in% excl$V1 | f.20002.0.8 %in% excl$V1 |
+                                    f.20002.0.9 %in% excl$V1 | f.20002.0.10 %in% excl$V1 | f.20002.0.11 %in% excl$V1 |
+                                    f.20002.0.12 %in% excl$V1 | f.20002.0.13 %in% excl$V1 | f.20002.0.14 %in% excl$V1 |
+                                    f.20002.0.15 %in% excl$V1 | f.20002.0.16 %in% excl$V1 | f.20002.0.17 %in% excl$V1 |
+                                    f.20002.0.18 %in% excl$V1 | f.20002.0.19 %in% excl$V1 | f.20002.0.20 %in% excl$V1 |
+                                    f.20002.0.21 %in% excl$V1 | f.20002.0.22 %in% excl$V1 | f.20002.0.23 %in% excl$V1 |
+                                    f.20002.0.24 %in% excl$V1 | f.20002.0.25 %in% excl$V1 | f.20002.0.26 %in% excl$V1 |
+                                    f.20002.0.27 %in% excl$V1 | f.20002.0.28 %in% excl$V1 | f.20002.0.29 %in% excl$V1 |
+                                    f.20002.0.30 %in% excl$V1 | f.20002.0.31 %in% excl$V1 | f.20002.0.32 %in% excl$V1, 
+                                   "excluded", NA), excl.0 = factor(excl.0, exclude = NULL))
+
+
+```
+
+# 2.6. Apply exclusion criteria (if enabled)
+
+```{r, eval=FALSE, echo=FALSE}
+# Filter out cases where exclusion criteria are met
+#ukb <- filter(ukb, stroke.0 != "Stroke" | heartattack.0 != "Heart attack" | is.na(f.20001.0.0) == TRUE)
+ukb_all <- ukb
+ukb <- filter(ukb, excl.0 != "excluded") # use this exclusion filter
+```
+
+# 2.7. Medication
+### get medication coding from ukbiobank website: http://biobank.ctsu.ox.ac.uk/crystal/coding.cgi?id=4
+
+```{r, echo=FALSE, fig.width=8, fig.height=12}
+coding4 <- read.csv("schaare/bp_mood_prereg/data/coding4.tsv", sep = "\t")
+# count frequencies of different medication categories
+meds.0 <- ukb %>% 
+  select(starts_with("f.20003.0.")) %>% 
+  gather(.) %>% 
+  group_by(as.factor(.$value)) %>% 
+  tally(.)
+# match to the name of medication
+meds.0 <- meds.0 %>% 
+  merge(coding4, ., by.x = "coding", by.y = names(.)[1]) %>% 
+  arrange(n)
+# summarize rows for "vitamin c product" variable, which has 2 codes:
+# 1195 vitamin c product 1286
+# 1140909726 vitamin c product 6090
+meds.0 <- meds.0 %>% 
+  group_by(meaning) %>% 
+  summarize(coding = paste(coding[1]), n = sum(n)) %>% 
+  arrange(n)
+# save results
+#write.table(meds.0, file = "/data/ukb_medication_0_excl.csv", sep = "\t", row.names = F, qmethod = "double")
+
+# plot the medication categories with names (only the top 100)
+# lollipop plot
+meds.0 %>%
+  filter(!is.na(meaning)) %>%
+  mutate(meaning=factor(meaning, levels=meaning)) %>%
+  tail(100) %>%
+  ggplot( aes(x=meaning, y=n)) +
+  geom_segment( aes(xend=meaning, yend=0)) +
+  geom_point( size=1, color="orange") +
+  xlab("medication at baseline") +
+  coord_flip() +
+  theme_bw()
+
+# count number of meds for each participant
+meds_subj.0 <- ukb %>% 
+  select(f.eid, starts_with("f.20003.0.")) %>% 
+  mutate(meds_count.0 = rowSums(!is.na(.[,-1]))) %>%
+  as_tibble(.)
+
+# add count to ukb data
+ukb <- as_tibble(merge(ukb, meds_subj.0[-c(2:49)], by = "f.eid"))
+
+
+# get HTN medication coding
+antiHTN <- read.csv("schaare/bp_mood_prereg/data/coding4_antiHTN.csv", 
+                    sep = ",")
+# count frequencies of different HTN drugs categories
+# note that the column "coding" is incorrect in htn_meds_ctgry.0
+htn_meds_ctgry.0 <- antiHTN %>% 
+  group_by(type.of.antiHTN) %>% 
+  summarize(coding = paste(coding[1]), n = sum(n)) %>% 
+  arrange(n)
+
+# lollipop plot of frequencies
+htn_meds_ctgry.0 %>%
+  mutate(meaning=factor(type.of.antiHTN, levels=type.of.antiHTN)) %>%
+  ggplot( aes(x=meaning, y=n)) +
+  geom_segment( aes(xend=meaning, yend=0)) +
+  geom_point( size=1, color="orange") +
+  xlab("HTN medication at baseline") +
+  coord_flip() +
+  theme_bw()
+
+# count frequencies of different HTN drugs (coded names)
+htn_meds.0 <- meds.0[meds.0$coding %in% antiHTN$coding,]
+# lollipop plot of frequencies
+htn_meds.0 %>%
+  mutate(meaning=factor(meaning, levels=meaning)) %>%
+  tail(100) %>%
+  ggplot( aes(x=meaning, y=n)) +
+  geom_segment( aes(xend=meaning, yend=0)) +
+  geom_point( size=1, color="orange") +
+  xlab("HTN medication at baseline") +
+  coord_flip() +
+  theme_bw()
+
+# HTN drugs categories for each participant
+htn_meds_ctgry_subj.0 <- ukb %>% 
+  select(f.eid, starts_with("f.20003.0.")) %>% 
+  mutate_at(., vars(-f.eid), ~(match(., antiHTN$coding))) %>%
+  mutate_at(., vars(-f.eid), ~antiHTN$type.of.antiHTN[.]) %>%
+  as_tibble(.)
+htn_meds_ctgry_subj.2 <- ukb %>% 
+  select(f.eid, starts_with("f.20003.2.")) %>% 
+  mutate_at(., vars(-f.eid), ~(match(., antiHTN$coding))) %>%
+  mutate_at(., vars(-f.eid), ~antiHTN$type.of.antiHTN[.]) %>%
+  as_tibble(.)
+
+# count number of htn meds per participant
+htn_meds_ctgry_subj.0 <- htn_meds_ctgry_subj.0 %>%
+  mutate(htn_meds_count.0 = rowSums(!is.na(.[,-1])))
+htn_meds_ctgry_subj.2 <- htn_meds_ctgry_subj.2 %>%
+  mutate(htn_meds_count.2 = rowSums(!is.na(.[,-1])))
+
+# save first htn meds category per participant
+htn_meds_ctgry_subj.0 <-  mutate(htn_meds_ctgry_subj.0, htnmeds_ctgry.0 = coalesce(!!!as.list(htn_meds_ctgry_subj.0[,-c(1,50)])))
+htn_meds_ctgry_subj.2 <-  mutate(htn_meds_ctgry_subj.2, htnmeds_ctgry.2 = coalesce(!!!as.list(htn_meds_ctgry_subj.2[,-c(1,50)])))
+
+# add count to ukb data
+ukb <- as_tibble(merge(ukb, htn_meds_ctgry_subj.0[-c(2:49)], by = "f.eid"))
+ukb <- as_tibble(merge(ukb, htn_meds_ctgry_subj.2[-c(2:49)], by = "f.eid"))
+
+# get DEPR medication coding
+antiDEPR <- read.csv("schaare/bp_mood_prereg/data/coding4_antiDEPR.csv", sep = ",")
+# count frequencies of different DEPR drugs categories
+# note that the column "coding" is incorrect in depr_meds_ctgry.0
+depr_meds_ctgry.0 <- antiDEPR %>% 
+  group_by(type.of.antiDEPR) %>% 
+  summarize(coding = paste(coding[1]), n = sum(n)) %>% 
+  arrange(n)
+# lollipop plot of frequencies
+depr_meds_ctgry.0 %>%
+  mutate(meaning=factor(type.of.antiDEPR, levels=type.of.antiDEPR)) %>%
+  ggplot( aes(x=meaning, y=n)) +
+  geom_segment( aes(xend=meaning, yend=0)) +
+  geom_point( size=1, color="orange") +
+  xlab("DEPR medication at baseline") +
+  coord_flip() +
+  theme_bw()
+
+# DEPR drugs categories for each participant
+depr_meds_ctgry_subj.0 <- ukb %>% 
+  select(f.eid, starts_with("f.20003.0.")) %>% 
+  mutate_at(., vars(-f.eid), ~(match(., antiDEPR$coding))) %>%
+  mutate_at(., vars(-f.eid), ~antiDEPR$type.of.antiDEPR[.]) %>%
+  as_tibble(.)
+
+# count number of depr meds per participant
+depr_meds_ctgry_subj.0 <- depr_meds_ctgry_subj.0 %>%
+  mutate(depr_meds_count.0 = rowSums(!is.na(.[,-1])))
+
+# save first depr meds category per participant
+depr_meds_ctgry_subj.0 <-  mutate(depr_meds_ctgry_subj.0, deprmeds_ctgry.0 = coalesce(!!!as.list(depr_meds_ctgry_subj.0[,-c(1,50)])))
+
+# add count to ukb data
+ukb <- as_tibble(merge(ukb, depr_meds_ctgry_subj.0[-c(2:49)], by = "f.eid"))
+
+
+# get BP ELEVATING medication coding
+elev_meds_ctgry.0 <- read.csv("schaare/bp_mood_prereg/data/coding4_BPelevating.csv", sep = ",")
+# plot the BP ELEVATING medication categories with names
+# lollipop plot
+elev_meds_ctgry.0 %>%
+  filter(!is.na(meaning)) %>%
+  arrange(n) %>%
+  mutate(meaning=factor(meaning, levels=meaning)) %>%
+  ggplot( aes(x=meaning, y=n)) +
+  geom_segment( aes(xend=meaning, yend=0)) +
+  geom_point( size=1, color="orange") +
+  xlab("bp elevating medication at baseline") +
+  coord_flip() +
+  theme_bw()
+
+# BP ELEVATING drugs categories for each participant
+elev_meds_ctgry_subj.0 <- ukb %>% 
+  select(f.eid, starts_with("f.20003.0.")) %>% 
+  mutate_at(., vars(-f.eid), ~(match(., elev_meds_ctgry.0$coding))) %>%
+  mutate_at(., vars(-f.eid), ~elev_meds_ctgry.0$meaning[.]) %>%
+  as_tibble(.)
+
+# count number of BP ELEVATING meds per participant
+elev_meds_ctgry_subj.0 <- elev_meds_ctgry_subj.0 %>%
+  mutate(elev_meds_count.0 = rowSums(!is.na(.[,-1])))
+
+# save first BP ELEVATING meds category per participant
+elev_meds_ctgry_subj.0 <-  mutate(elev_meds_ctgry_subj.0, elevmeds_ctgry.0 = coalesce(!!!as.list(elev_meds_ctgry_subj.0[,-c(1,50)])))
+
+# add count to ukb data
+ukb <- as_tibble(merge(ukb, elev_meds_ctgry_subj.0[-c(2:49)], by = "f.eid"))
+
+
+# get BP REDUCING medication coding
+reduc_meds_ctgry.0 <- read.csv("schaare/bp_mood_prereg/data/coding4_BPreducing.csv", sep = ",")
+# plot the BP REDUCING medication categories with names
+# lollipop plot
+reduc_meds_ctgry.0 %>%
+  filter(!is.na(meaning)) %>%
+  arrange(n) %>%
+  mutate(meaning=factor(meaning, levels=meaning)) %>%
+  ggplot( aes(x=meaning, y=n)) +
+  geom_segment( aes(xend=meaning, yend=0)) +
+  geom_point( size=1, color="orange") +
+  xlab("bp reducing medication at baseline") +
+  coord_flip() +
+  theme_bw()
+
+# BP REDUCING drugs categories for each participant
+reduc_meds_ctgry_subj.0 <- ukb %>% 
+  select(f.eid, starts_with("f.20003.0.")) %>% 
+  mutate_at(., vars(-f.eid), ~(match(., reduc_meds_ctgry.0$coding))) %>%
+  mutate_at(., vars(-f.eid), ~reduc_meds_ctgry.0$meaning[.]) %>%
+  as_tibble(.)
+
+# count number of BP REDUCING meds per participant
+reduc_meds_ctgry_subj.0 <- reduc_meds_ctgry_subj.0 %>%
+  mutate(reduc_meds_count.0 = rowSums(!is.na(.[,-1])))
+
+# save first BP REDUCING meds category per participant
+reduc_meds_ctgry_subj.0 <-  mutate(reduc_meds_ctgry_subj.0, reducmeds_ctgry.0 = coalesce(!!!as.list(reduc_meds_ctgry_subj.0[,-c(1,50)])))
+
+# add count to ukb data
+ukb <- as_tibble(merge(ukb, reduc_meds_ctgry_subj.0[-c(2:49)], by = "f.eid"))
+```
+
+# Calculate scale scores
+
+```{r, echo=FALSE}
+# 3.1. Blood pressure and pulse rate
+### calculate mean from 2 consecutive measurements 
+ukb$mean_sbp.0 <- rowMeans(cbind(ukb$f.4080.0.0, ukb$f.4080.0.1)) # systolic at initial visit
+ukb$mean_dbp.0 <- rowMeans(cbind(ukb$f.4079.0.0, ukb$f.4079.0.1)) # diastolic 
+ukb$mean_sbp.2 <- rowMeans(cbind(ukb$f.4080.2.0, ukb$f.4080.2.1)) # systolic at imaging visit
+ukb$mean_dbp.2 <- rowMeans(cbind(ukb$f.4079.2.0, ukb$f.4079.2.1)) # diastolic 
+
+ukb$mean_hr.0 <- rowMeans(cbind(ukb$f.102.0.0, ukb$f.102.0.1)) # pulse rate at initial visit
+ukb$mean_hr.2 <- rowMeans(cbind(ukb$f.102.2.0, ukb$f.102.2.1)) # pulse rate at imaging visit
+
+### divide BMI in categories
+ukb$bmi_ctgry <- ifelse(ukb$f.21001.0.0 < 30, "BMI<30", "BMI>30")
+
+
+# 3.2. Depression 
+### mean of current symptoms at initial visit (frequency in last 2 weeks)
+items <- c("f.2050.0.0","f.2060.0.0","f.2070.0.0","f.2080.0.0")
+# recode -3 ("Prefer not to answer") and -1 ("Do not know") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -3))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -1))
+# calculate mean score for each participant
+ukb <- ukb %>% mutate(depr_c.0 = rowMeans(.[items]))
+
+### mean of current symptoms at imaging visit (frequency in last 2 weeks)
+items <- c("f.2050.2.0","f.2060.2.0","f.2070.2.0","f.2080.2.0")
+# recode -3 ("Prefer not to answer") and -1 ("Do not know") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -3))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -1))
+# calculate mean score for each participant
+ukb <- ukb %>% mutate(depr_c.2 = rowMeans(.[items]))
+
+### PHQ-9 sum score (depressive symptoms over the last two weeks) at online follow-up
+items <- c("f.20514.0.0","f.20510.0.0","f.20517.0.0","f.20519.0.0","f.20511.0.0","f.20507.0.0","f.20508.0.0","f.20518.0.0","f.20513.0.0")
+# recode -818 ("Prefer not to answer") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -818))
+# recode scores (so that they match original PHQ9 coding)
+ukb <- ukb %>% mutate_at(vars(items), ~recode(., `1`=0, `2`=1,`3`=2,`4`=3))
+# calculate sum score for each participant
+ukb <- ukb %>% mutate(phq9.0 = rowSums(.[items]))
+
+
+# 3.3. Well-being
+### mean well-being at initial visit
+items <- c("f.4526.0.0","f.4548.0.0","f.4537.0.0","f.4559.0.0","f.4570.0.0","f.4581.0.0")
+# recode -3 ("Prefer not to answer") and -1 ("Do not know") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -3))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -1))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., 7)) # "i am not employed"
+# reverse scores (so that greater values = greater well-being)
+ukb <- ukb %>% mutate_at(vars(items), ~recode(., `1`=6, `2`=5,`3`=4,`4`=3,`5`=2,`6`=1))
+# calculate mean score for each participant
+ukb <- ukb %>% mutate(wb.0 = rowMeans(.[items], na.rm=T))
+
+### mean well-being at imaging visit
+items <- c("f.4526.2.0","f.4548.2.0","f.4537.2.0","f.4559.2.0","f.4570.2.0","f.4581.2.0")
+# recode -3 ("Prefer not to answer") and -1 ("Do not know") to NA
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -3))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., -1))
+ukb <- ukb %>% mutate_at(vars(items), ~na_if(., 7)) # "i am not employed"
+# reverse scores (so that greater values = greater well-being)
+ukb <- ukb %>% mutate_at(vars(items), ~recode(., `1`=6, `2`=5,`3`=4,`4`=3,`5`=2,`6`=1))
+# calculate mean score for each participant
+ukb <- ukb %>% mutate(wb.2 = rowMeans(.[items], na.rm=T))
+```
+
+# Plots and descriptives of main outcomes and predictors
+
+```{r, echo=FALSE}
+## plot assessment days
+library(scales)
+t <- data.frame(c(ukb$f.53.0.0,ukb$f.53.2.0))
+names(t)[1] <- "AssessmentDates"
+#pdf(file="ukb_assessment_dates.pdf")
+ggplot(t, aes(AssessmentDates, ..count..)) +
+  geom_histogram(binwidth = 80, fill = "#005F6F", alpha = 1) + theme_bw() +
+  labs(title="Assessment dates") + xlab(NULL) +
+  scale_x_date(breaks = date_breaks("2 years"), labels = date_format("%Y")) + 
+  theme(text = element_text(size=20), axis.text.x = element_text(size=18),
+                                    axis.text.y = element_text(size=18))
+#dev.off()
+ggsave("ukb_assessment_dates.png", width = 12, height = 8, device='png', dpi=600)
+
+
+## time between baseline and follow-ups
+ukb <- ukb %>% mutate(date_diff_1 = ukb$f.53.1.0 - ukb$f.53.0.0, 
+                      date_diff_2 = ukb$f.53.2.0 - ukb$f.53.0.0)
+median(ukb$date_diff_1, na.rm = T)
+mean(ukb$date_diff_1, na.rm = T)
+sd(ukb$date_diff_1, na.rm = T)
+min(ukb$date_diff_1, na.rm = T)
+max(ukb$date_diff_1, na.rm = T)
+ggplot(ukb, aes(date_diff_1, ..count..)) +
+  geom_histogram(fill = "#005F6F", alpha = 1) + theme_bw() +
+  labs(title="Days between baseline and 1st follow-up")
+
+median(ukb$date_diff_2, na.rm = T)
+mean(ukb$date_diff_2, na.rm = T)
+sd(ukb$date_diff_2, na.rm = T)
+min(ukb$date_diff_2, na.rm = T)
+max(ukb$date_diff_2, na.rm = T)
+ggplot(ukb, aes(date_diff_2, ..count..)) +
+  geom_histogram(fill = "#005F6F", alpha = 1) + theme_bw() +
+  labs(title="Days between baseline and 2nd follow-up")
+
+
+## depression at baseline
+describe(ukb$depr_c.0) # -> ~53,568 missing values
+# plot distribution
+ggplot(ukb, aes(x=depr_c.0)) + geom_histogram(position="identity", binwidth = 0.5) + 
+  xlab("Mean frequency of depressive symptoms in last 2 weeks at initial visit")
+
+## depression at imaging
+describe(ukb$depr_c.2) # -> ~473,395 missing values
+# plot distribution
+ggplot(ukb, aes(x=depr_c.2)) + geom_histogram(position="identity", binwidth = 0.5) +
+  xlab("Mean frequency of depressive symptoms in last 2 weeks at imaging visit")
+
+## depression at online follow-up
+describe(ukb$phq9.0) # -> ~348,177 missing values
+# plot distribution
+ggplot(ukb, aes(x=phq9.0)) + geom_histogram(position="identity", binwidth = 0.5) + xlab("PHQ-9 score")
+
+## test-retest reliability
+cor.test(ukb$depr_c.0,ukb$depr_c.2, method = "pearson", use = "complete.obs")
+
+## well-being at baseline
+describe(ukb$wb.0) # -> ~385,300 missing values
+# plot distribution
+ggplot(ukb, aes(x=wb.0)) + geom_histogram(position="identity", binwidth = 0.5) + 
+  xlab("Mean well-being at initial visit")
+
+## well-being at imaging
+describe(ukb$wb.2) # -> 472,312 missing values
+# plot distribution
+ggplot(ukb, aes(x=wb.2)) + geom_histogram(position="identity", binwidth = 0.5) + 
+  xlab("Mean well-being at imaging visit")
+
+## test-retest reliability
+cor.test(ukb$wb.0,ukb$wb.2, method = "pearson", use = "complete.obs")
+
+## SBP at baseline
+describe(ukb$mean_sbp.0) 
+# plot distribution
+ggplot(ukb, aes(x=mean_sbp.0)) + geom_histogram(position="identity", binwidth = 0.5) + 
+  xlab("Mean systolic blood pressure at initial visit")
+
+## SBP at imaging
+describe(ukb$mean_sbp.2) 
+# plot distribution
+ggplot(ukb, aes(x=mean_sbp.2)) + geom_histogram(position="identity", binwidth = 0.5) + 
+  xlab("Mean systolic blood pressure at imaging visit")
+
+## DBP at baseline
+describe(ukb$mean_dbp.0) 
+# plot distribution
+ggplot(ukb, aes(x=mean_sbp.0)) + geom_histogram(position="identity", binwidth = 0.5) + 
+  xlab("Mean diastolic blood pressure at initial visit")
+
+## DBP at imaging
+describe(ukb$mean_dbp.2) 
+# plot distribution
+ggplot(ukb, aes(x=mean_dbp.2)) + geom_histogram(position="identity", binwidth = 0.5) + 
+  xlab("Mean diastolic blood pressure at imaging visit")
+```
+
+# Descriptives
+## basic characterstics
+```{r, echo=FALSE}
+
+# 4.1. baseline characteristics
+dscrp <- dplyr::select(ukb, f.31.0.0, f.738.0.0, f.21000.0.0, f.2443.0.0, f.20116.0.0, f.1558.0.0, f.22040.0.0, f.54.0.0,
+                       f.21003.0.0, f.21003.2.0, f.189.0.0,  
+                       angina.0, heartattack.0, f.1200.0.0, education.0, ethn.0,
+                       depr_l.0, mean_hr.0, mean_sbp.0, mean_sbp.2, mean_dbp.0, mean_dbp.2, 
+                       f.21001.0.0, htn_meds_count.0, depr_meds_count.0, depr_c.0, depr_c.2, wb.0, 
+                       wb.2, phq9.0, high_bp.0, high_bp.2)
+
+col <- colorRampPalette(c("#67001F", "#B2182B", "#D6604D", "#F4A582","#FDDBC7", "#FFFFFF", 
+                          "#D1E5F0", "#92C5DE", "#4393C3", "#2166AC", "#053061"))(200)
+col <- rev(col)
+#d <- subset(dscrp, f.21003.0.0>65)
+cormat <- signif(cor(dscrp[-c(1:8)], use = "complete.obs", method="spearman"),3)
+corrplot::corrplot.mixed(cormat, tl.col="black", tl.pos="lt", tl.cex = .7, number.cex=.6,
+                           upper.col=col, lower.col = "black")
+
+dscrp$angina.0 <- factor(dscrp$angina.0, levels=c(0, 1), 
+                         labels=c("No diagnosed angina or unknown", "Diagnosed angina"))
+dscrp$heartattack.0 <- factor(dscrp$heartattack.0, levels=c(0, 1), 
+                              labels=c("No diagnosed heart attack or unknown", 
+                                       "Diagnosed heart attack"))
+dscrp$depr_l.0 <- factor(dscrp$depr_l.0, levels=c(0, 1), 
+                         labels=c("No diagnosed depression or unknown", "Diagnosed depression"))
+dscrp$high_bp.0 <- factor(dscrp$high_bp.0, levels=c(0, 1, 2), 
+                          labels=c("No diagnosed HTN or unknown", "Diagnosed HTN", 
+                                   "P-value / Effect size"))
+dscrp$high_bp.2 <- factor(dscrp$high_bp.2, levels=c(0, 1), 
+                          labels=c("No diagnosed HTN or unknown", "Diagnosed HTN"))
+
+# add meaningful labels
+label(dscrp$f.31.0.0) <- "Gender"
+label(dscrp$f.21003.0.0) <- "Age (years)"
+label(dscrp$f.21003.2.0) <- "Age (years)"
+#units(ukb$f.21003.0.0) <- "years"
+label(dscrp$f.738.0.0) <- "Household income (£)"
+label(dscrp$f.189.0.0) <- "Townsend deprivation index"
+label(dscrp$f.21000.0.0) <- "Ethnic background"
+label(dscrp$f.2443.0.0) <- "Diabetes"
+label(dscrp$f.20116.0.0) <- "Smoking"
+label(dscrp$f.1558.0.0) <- "Alcohol consumption"
+label(dscrp$f.22040.0.0) <- "Physical activity (minutes/week)"
+label(dscrp$angina.0) <- "Angina"
+label(dscrp$heartattack.0) <- "Heart attack"
+label(dscrp$depr_l.0) <- "Lifetime depression"
+label(dscrp$mean_hr.0) <- "Heart rate (beats/min)"
+label(dscrp$mean_sbp.0) <- "Systolic blood pressure (mmHg)"
+label(dscrp$mean_sbp.2) <- "Systolic blood pressure (mmHg)"
+label(dscrp$mean_dbp.0) <- "Diastolic blood pressure (mmHg)"
+label(dscrp$mean_dbp.2) <- "Diastolic blood pressure (mmHg)"
+label(dscrp$f.21001.0.0) <- "BMI (kg/m2)"
+label(dscrp$htn_meds_count.0) <- "No. antihypertensive medication"
+label(dscrp$depr_meds_count.0) <- "No. antidepressant medication"
+label(dscrp$depr_c.0) <- "Current depressive symptoms"
+label(dscrp$depr_c.2) <- "Current depressive symptoms (2nd follow-up)"
+label(dscrp$wb.0) <- "Well-being"
+label(dscrp$wb.2) <- "Well-being (2nd follow-up)"
+label(dscrp$phq9.0) <- "PHQ-9 depressive symptoms (1st follow-up)"
+label(dscrp$high_bp.0) <- "Diagnosed hypertension"
+label(dscrp$high_bp.2) <- "Diagnosed hypertension (2nd follow-up)"
+
+rndr <- function(x, name, ...) {
+    if (length(x) == 0) {
+        y <- dscrp[[name]]
+        s <- rep("", length(render.default(x=y, name=name, ...)))
+        if (is.numeric(y)) {
+            p <- t.test(y ~ dscrp$high_bp.0)$p.value
+            es <- effsize::cohen.d(y ~ dscrp$high_bp.0)$estimate 
+        } else {
+            chi <- chisq.test(table(y, droplevels(dscrp$high_bp.0)))
+            p <- chi$p.value
+            # Cramer's V
+            es <- sqrt(chi$statistic / 
+                   (length(droplevels(dscrp$high_bp.0)) *
+                      (min(length(unique(droplevels(dscrp$high_bp.0))),length(unique(y))) - 1)))
+        }
+        s[2] <- sub("<", "&lt;", format.pval(p, digits=3, eps=0.001))
+        s[3] <- round(abs(es), digits = 3)
+        s
+    } else {
+        render.default(x=x, name=name, ...)
+    }
+}
+
+rndr.strat <- function(label, n, ...) {
+    ifelse(n==0, label, render.strat.default(label, n, ...))
+}
+
+#descriptives
+table1(~ f.31.0.0 + f.21003.0.0 + f.738.0.0 + f.189.0.0 + f.21000.0.0 + f.2443.0.0 + f.20116.0.0 +
+         f.1558.0.0 + f.22040.0.0 + angina.0 + heartattack.0 + depr_l.0 + mean_hr.0 + mean_sbp.0 + 
+         mean_dbp.0 + f.21001.0.0 + htn_meds_count.0 + depr_meds_count.0 + depr_c.0 + depr_c.2 + 
+         wb.0 + wb.2 + phq9.0 + high_bp.0 | high_bp.0, data=dscrp, 
+       droplevels=F, render=rndr, render.strat=rndr.strat)
+
+# shortened descriptives, baseline
+table1(~ f.31.0.0 + f.21003.0.0 + f.189.0.0 + mean_sbp.0 + 
+         mean_dbp.0 + mean_hr.0 + f.21001.0.0 + f.2443.0.0 +
+         angina.0 + heartattack.0 + depr_l.0 + htn_meds_count.0 + depr_meds_count.0 + 
+         depr_c.0 + wb.0 + high_bp.0 | high_bp.0, data=dscrp, 
+       droplevels=F, render=rndr, render.strat=rndr.strat)
+
+# descriptives at imaging visit
+table1(~ f.31.0.0 + f.21003.2.0 + mean_sbp.2 + mean_dbp.2 + depr_c.2 + wb.2 + high_bp.2 | high_bp.2, 
+       data=dplyr::filter(dscrp, is.na(f.21003.2.0)==FALSE))
+
+
+
+```
+
+## Label variables with meaningful names
+```{r, echo=FALSE}
+library(expss)
+ukb_lbl = apply_labels(ukb, 
+                   f.21003.0.0   = "Age (years)",
+                   f.21003.1.0   = "Age (years)",
+                   f.21003.2.0   = "Age (years)",
+                   f.189.0.0     = "Townsend deprivation index",
+                   f.22040.0.0   = "Physical activity (minutes/week)",
+                   f.21001.0.0   = "BMI (kg/m2)",
+                   f.21001.1.0   = "BMI (kg/m2)",
+                   f.21001.2.0   = "BMI (kg/m2)",
+                   f.31.0.0      = "Gender",
+                   f.2443.0.0    = "Diabetes",
+                   f.738.0.0     = "Household income (£)",
+                   f.21000.0.0   = "Ethnic background",
+                   f.20116.0.0   = "Smoking",
+                   f.1558.0.0    = "Alcohol consumption",
+                   mean_hr.0     = "Heart rate (beats/min)",
+                   mean_hr.2     = "Heart rate (beats/min)",
+                   mean_sbp.0    = "Systolic blood pressure (mmHg)",
+                   mean_dbp.0    = "Diastolic blood pressure (mmHg)",
+                   mean_sbp.2    = "Systolic blood pressure (mmHg)",
+                   mean_dbp.2    = "Diastolic blood pressure (mmHg)",
+                   depr_c.0      = "Current depressive symptoms",
+                   depr_c.2      = "Current depressive symptoms (2nd follow-up)",
+                   wb.0          = "Well-being",
+                   wb.2          = "Well-being (2nd follow-up)",
+                   phq9.0        = "PHQ-9 depressive symptoms (1st follow-up)",
+                   htn_meds_count.0 = "No. antihypertensive medication",
+                   depr_meds_count.0 = "No. antidepressant medication",
+                   angina.0      = "Angina",
+                   angina.0      = c("No diagnosed angina or unknown" = 0, 
+                                      "Diagnosed angina" = 1),
+                   heartattack.0 = "Heart attack",
+                   heartattack.0 = c("No diagnosed heart attack or unknown" = 0, 
+                                      "Diagnosed heart attack" = 1),
+                   depr_l.0      = "Lifetime depression",
+                   depr_l.0      = c("No diagnosed depression or unknown" = 0, 
+                                      "Diagnosed depression" = 1),
+                   high_bp.0     = "Diagnosed hypertension",
+                   high_bp.0     = c("No diagnosed HTN or unknown" = 0, 
+                                      "Diagnosed HTN" = 1)
+                   )
+
+```
+
+## additional characteristics
+```{r, echo=FALSE}
+
+table(ukb_lbl$high_bp.0, ukb_lbl$f.31.0.0) #sex
+table(ukb_lbl$high_bp.0, ukb_lbl$f.2443.0.0) #diabetes
+table(ukb_lbl$high_bp.0, ukb_lbl$angina.0) #angina
+table(ukb_lbl$high_bp.0, ukb_lbl$heartattack.0) #heart attack
+table(ukb_lbl$high_bp.0, ukb_lbl$depr_l.0) #lifetime depression
+table(ukb_lbl$f.21000.0.0) #ethnic background
+table(ukb_lbl$f.738.0.0) #household income
+describe(ukb_lbl$f.21003.2.0) #age at imaging -> 471291 NAs
+table1(~ f.31.0.0 + f.21003.2.0 | f.31.0.0, 
+       data=subset(ukb_lbl, is.na(f.21003.2.0)==FALSE)) #age at imaging by sex
+```
+
+# Conceptual replication analyses:
+with confounders (cf. Herrmann-Lingen et al.): age (f.21003), sex (f.31), history of CHD (angina), myocardial infarction (heartattack), diabetes (f.2443), depression (depr_l), BMI (f.21001), resting heart rate (mean_hr)
+
+## Cross-sectional regressions of Systolic Blood Pressure, Hypertension and Number of Antihypertensive Medications With Well-Being and Depressive Mood:
+
+```{r}
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0,
+                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                     f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+
+# define predictors and covariates
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0",
+          "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, depr_c.0, mean_sbp.0, high_bp.0,
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0,
+                                                     f.21001.0.0, mean_hr.0))))
+
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit1 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit1)
+car::vif(mdl_fit1)
+
+# calculate delta adj. r squared
+summary(mdl_fit1)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+### lifetime depression
+outcome <- "depr_l.0"
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "f.21001.0.0", "mean_hr.0") # without depr_l.0
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, depr_l.0, mean_sbp.0, high_bp.0,
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, 
+                                                     f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit2 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit2)
+car::vif(mdl_fit2)
+
+# calculate delta adj. r squared
+summary(mdl_fit2)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+### well-being
+outcome <- "wb.0"
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0", 
+          "f.21001.0.0", "mean_hr.0")
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, wb.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                                                     f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit3 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit3)
+car::vif(mdl_fit3)
+
+# calculate delta adj. r squared
+summary(mdl_fit3)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+```
+
+### Additional covariates
+```{r}
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0,
+                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                     f.21001.0.0, mean_hr.0, f.738.0.0, education.0, ethn.0, f.1200.0.0, f.54.0.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+dat$f.738.0.0 <- as.numeric(dat$f.738.0.0)
+
+# define predictors and covariates
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0",
+          "f.21001.0.0", "mean_hr.0", "f.738.0.0", "education.0", "ethn.0", "f.1200.0.0", "f.54.0.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, depr_c.0, mean_sbp.0, high_bp.0,
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0,
+                                                     f.21001.0.0, mean_hr.0, f.738.0.0, education.0, ethn.0, f.1200.0.0, f.54.0.0))))
+
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit1_covs <- lm(mdl, data=dat_scaled)
+summary(mdl_fit1_covs)
+car::vif(mdl_fit1_covs)
+
+# calculate delta adj. r squared
+summary(mdl_fit1_covs)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+### well-being
+outcome <- "wb.0"
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0",
+          "f.21001.0.0", "mean_hr.0", "f.738.0.0", "education.0", "ethn.0", "f.1200.0.0", "f.54.0.0")
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, wb.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                                                     f.21001.0.0, mean_hr.0, f.738.0.0, education.0, ethn.0, f.1200.0.0, f.54.0.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit3_covs <- lm(mdl, data=dat_scaled)
+summary(mdl_fit3_covs)
+car::vif(mdl_fit3_covs)
+
+# calculate delta adj. r squared
+summary(mdl_fit3_covs)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+```
+
+### Partcipants with hypertension diagnosis only:
+
+```{r}
+# depressive mood
+outcome <- c("depr_c.0")
+predictors <- c("mean_sbp.0", "htn_meds_count.0") # without high_bp.0
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0", "f.21001.0.0", "mean_hr.0")
+d <- subset(dat, high_bp.0 > 0)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                                                     f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit1_htn <- lm(mdl, data=dat_scaled)
+summary(mdl_fit1_htn)
+car::vif(mdl_fit1_htn)
+
+# calculate delta adj. r squared
+summary(mdl_fit1_htn)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+# well-being
+outcome <- c("wb.0")
+d <- subset(dat, high_bp.0 > 0)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(d, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, 
+                                                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, 
+                                                     f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit3_htn <- lm(mdl, data=dat_scaled)
+summary(mdl_fit3_htn)
+car::vif(mdl_fit3_htn)
+
+# calculate delta adj. r squared
+summary(mdl_fit3_htn)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+```
+
+## Longitudinal regressions of Systolic Blood Pressure, Hypertension and Number of Antihypertensive Medications With Well-Being and Depressive Mood
+
+```{r}
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.2, phq9.0, wb.2, mean_sbp.0, high_bp.0, htn_meds_count.0, 
+                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0,
+                     mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+# define predictors and covariates
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0", 
+          "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.2"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, depr_c.2, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                                                     f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit4 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit4)
+car::vif(mdl_fit4)
+
+outcome <- "phq9.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, phq9.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                                                     f.21001.0.0, mean_hr.0))))
+# calculate delta adj. r squared
+summary(mdl_fit4)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit5 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit5)
+car::vif(mdl_fit5)
+
+# calculate delta adj. r squared
+summary(mdl_fit5)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+
+### well-being
+outcome <- "wb.2"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, wb.2, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                                                     f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit6 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit6)
+car::vif(mdl_fit6)
+
+# calculate delta adj. r squared
+summary(mdl_fit6)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+```
+
+# Sensitivity analyses
+## HTN medication effects
+
+```{r}
+# HTN meds
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, htnmeds_ctgry.0, mean_sbp.0, high_bp.0, 
+                     htn_meds_count.0, f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, 
+                     depr_l.0, f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+# define predictors and covariates
+predictors <- "htnmeds_ctgry.0"
+covs <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0","f.21003.0.0", "f.31.0.0", "angina.0", 
+          "heartattack.0", "f.2443.0.0", "depr_l.0", "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+mdl <- as.formula(paste(paste(outcome), paste(predictors, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat)
+summary(mdl_fit)
+# with covariates
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit7 <- lm(mdl, data=dat)
+summary(mdl_fit7)
+
+
+
+# calculate delta adj. r squared
+summary(mdl_fit7)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+### well-being
+outcome <- "wb.0"
+mdl <- as.formula(paste(paste(outcome), paste(predictors, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat)
+summary(mdl_fit)
+# with covariates
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit8 <- lm(mdl, data=dat)
+summary(mdl_fit8)
+
+# calculate delta adj. r squared
+summary(mdl_fit8)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+```
+
+## DEPR medication effects
+
+```{r}
+# DEPR meds
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, deprmeds_ctgry.0, mean_sbp.0, high_bp.0, 
+                     htn_meds_count.0, f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, 
+                     depr_l.0, f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+# define predictors and covariates
+predictors <- "deprmeds_ctgry.0"
+covs <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0","f.21003.0.0", "f.31.0.0", "angina.0", 
+          "heartattack.0", "f.2443.0.0", "depr_l.0", "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+mdl <- as.formula(paste(paste(outcome), paste(predictors, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat)
+summary(mdl_fit)
+# with covariates
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit77 <- lm(mdl, data=dat)
+summary(mdl_fit77)
+
+# calculate delta adj. r squared
+summary(mdl_fit77)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+### well-being
+outcome <- "wb.0"
+mdl <- as.formula(paste(paste(outcome), paste(predictors, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat)
+summary(mdl_fit)
+# with covariates
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit88 <- lm(mdl, data=dat)
+summary(mdl_fit88)
+
+# calculate delta adj. r squared
+summary(mdl_fit88)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+```
+
+### partcipants without/with depression meds only
+
+```{r}
+### partcipants with/without depression meds only
+# prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, 
+                     depr_meds_count.0, f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, 
+                     depr_l.0, f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0") 
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0", 
+          "f.21001.0.0", "mean_hr.0") # without depr_meds_count.0
+# depressive mood
+outcome <- "depr_c.0"
+dat_filtered <- filter(dat, depr_meds_count.0 < 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, depr_c.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, 
+                                                     depr_l.0, f.21001.0.0, mean_hr.0))))
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_depr_meds0 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_depr_meds0)
+dat_filtered <- filter(dat, depr_meds_count.0 > 0)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, depr_c.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, angina.0, 
+                                                     heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0, 
+                                                     mean_hr.0))))
+mdl_fit_depr_meds1 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_depr_meds1)
+
+# well-being
+outcome <- "wb.0"
+dat_filtered <- filter(dat, depr_meds_count.0 < 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, wb.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, 
+                                                     depr_l.0, f.21001.0.0, mean_hr.0))))
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_wb_depr_meds0 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_wb_depr_meds0)
+dat_filtered <- filter(dat, depr_meds_count.0 > 0)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, wb.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, angina.0, 
+                                                     heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0, 
+                                                     mean_hr.0))))
+mdl_fit_wb_depr_meds1 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_wb_depr_meds1)
+```
+
+## ANY medication effects
+### partcipants without/with meds only
+
+```{r}
+### partcipants with/without meds only
+# prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, mean_sbp.0, high_bp.0, meds_count.0, f.21003.0.0, 
+                     f.31.0.0, angina.0, heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0, 
+                     mean_hr.0) # without htn_meds_count.0
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+predictors <- c("mean_sbp.0", "high_bp.0") 
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0", 
+          "f.21001.0.0", "mean_hr.0") # without meds_count.0
+# depressive mood
+outcome <- "depr_c.0"
+dat_filtered <- filter(dat, meds_count.0 < 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, depr_c.0, mean_sbp.0, high_bp.0, 
+                                                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, 
+                                                     f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0))))
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_meds0 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_meds0)
+dat_filtered <- filter(dat, meds_count.0 > 0)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, depr_c.0, mean_sbp.0, high_bp.0, 
+                                                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, 
+                                                     f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0))))
+mdl_fit_meds1 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_meds1)
+
+# well-being
+outcome <- "wb.0"
+dat_filtered <- filter(dat, meds_count.0 < 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, wb.0, mean_sbp.0, high_bp.0, 
+                                                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, 
+                                                     f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0))))
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_wb_meds0 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_wb_meds0)
+dat_filtered <- filter(dat, meds_count.0 > 0)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, wb.0, mean_sbp.0, high_bp.0, 
+                                                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, 
+                                                     f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0))))
+mdl_fit_wb_meds1 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_wb_meds1)
+```
+
+## BP ELEVATING medication effects
+
+```{r}
+# BP ELEVATING meds
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, 
+                     elev_meds_count.0, f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, 
+                     depr_l.0, f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+# define predictors and covariates
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0", "elev_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0", 
+          "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, depr_c.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, elev_meds_count.0, f.21003.0.0, 
+                                                     f.31.0.0, angina.0, heartattack.0, f.2443.0.0, 
+                                                     depr_l.0, f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit111 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit111)
+car::vif(mdl_fit111)
+
+# calculate delta adj. r squared
+summary(mdl_fit111)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, elevmeds_ctgry.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0,
+                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+# define predictors and covariates
+predictors <- "elevmeds_ctgry.0"
+covs <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0","f.21003.0.0", "f.31.0.0", "angina.0", 
+          "heartattack.0", "f.2443.0.0", "depr_l.0", "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+mdl <- as.formula(paste(paste(outcome), paste(predictors, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat)
+summary(mdl_fit)
+# with covariates
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit777 <- lm(mdl, data=dat)
+summary(mdl_fit777)
+
+# calculate delta adj. r squared
+summary(mdl_fit777)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+### well-being
+outcome <- "wb.0"
+mdl <- as.formula(paste(paste(outcome), paste(predictors, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat)
+summary(mdl_fit)
+# with covariates
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit888 <- lm(mdl, data=dat)
+summary(mdl_fit888)
+
+# calculate delta adj. r squared
+summary(mdl_fit888)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+```
+
+## Diseases
+### partcipants with and without depression at initial assessment (f.20002 codes "depression" = 1286)
+```{r}
+### participants with/without depression history only
+# prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0") 
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "f.21001.0.0", "mean_hr.0") # without depr_l.0
+
+# depressive mood
+outcome <- "depr_c.0"
+dat_filtered <- filter(dat, depr_l.0 != 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, depr_c.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, f.21001.0.0, mean_hr.0))))
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), paste(covs, collapse = " + "), sep = " + "), sep = " ~ "))
+mdl_fit9 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit9)
+car::vif(mdl_fit9)
+dat_filtered <- filter(dat, depr_l.0 == 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, depr_c.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, f.21001.0.0, mean_hr.0))))
+mdl_fit10 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit10)
+car::vif(mdl_fit10)
+
+# well-being
+outcome <- "wb.0"
+dat_filtered <- filter(dat, depr_l.0 != 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, f.21001.0.0, mean_hr.0))))
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), paste(covs, collapse = " + "), sep = " + "), sep = " ~ "))
+mdl_fit11 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit11)
+car::vif(mdl_fit11)
+dat_filtered <- filter(dat, depr_l.0 == 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, f.21001.0.0, mean_hr.0))))
+mdl_fit12 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit12)
+car::vif(mdl_fit12)
+
+## longitudinal
+# prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.2, wb.2, phq9.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0") 
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "f.21001.0.0", "mean_hr.0") # without depr_l.0
+
+# depressive mood
+outcome <- "phq9.0"
+dat_filtered <- filter(dat, depr_l.0 != 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, phq9.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, f.21001.0.0, mean_hr.0))))
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), paste(covs, collapse = " + "), sep = " + "), sep = " ~ "))
+mdl_fit13 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit13)
+car::vif(mdl_fit13)
+dat_filtered <- filter(dat, depr_l.0 == 1)
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat_filtered, phq9.0, mean_sbp.0, high_bp.0, htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, f.21001.0.0, mean_hr.0))))
+mdl_fit14 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit14)
+car::vif(mdl_fit14)
+
+```
+
+### partcipants without/with severe diseases only
+
+```{r}
+# partcipants without/with severe diseases only
+## NO DISEASES
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, 
+                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                     f.21001.0.0, mean_hr.0, excl.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+d <- subset(dat, excl.0 != "excluded")
+# define predictors and covariates
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "heartattack.0", "f.2443.0.0", "depr_l.0", 
+          "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0, 
+                                                     mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_d.0_excl0 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_d.0_excl0)
+car::vif(mdl_fit_d.0_excl0)
+
+# calculate delta adj. r squared
+summary(mdl_fit_d.0_excl0)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+# well-being
+outcome <- c("wb.0")
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(d, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, 
+                                                     f.21003.0.0, f.31.0.0, heartattack.0, f.2443.0.0, 
+                                                     depr_l.0, f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_wb.0_excl0 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_wb.0_excl0)
+car::vif(mdl_fit_wb.0_excl0)
+
+# calculate delta adj. r squared
+summary(mdl_fit_wb.0_excl0)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+## ONLY DISEASES
+### prepare data
+d <- subset(dat, excl.0 == "excluded")
+
+### depressive mood
+outcome <- "depr_c.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, high_bp.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     heartattack.0, f.2443.0.0, depr_l.0, f.21001.0.0, 
+                                                     mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), paste(covs, collapse = " + "), sep = " + "), sep = " ~ "))
+mdl_fit_d.0_excl1 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_d.0_excl1)
+car::vif(mdl_fit_d.0_excl1)
+
+# calculate delta adj. r squared
+summary(mdl_fit_d.0_excl1)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+# well-being
+outcome <- c("wb.0")
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(d, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0, 
+                                                     f.21003.0.0, f.31.0.0, heartattack.0, f.2443.0.0, 
+                                                     depr_l.0, f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_wb.0_excl1 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_wb.0_excl1)
+car::vif(mdl_fit_wb.0_excl1)
+
+# calculate delta adj. r squared
+summary(mdl_fit_wb.0_excl1)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+```
+
+# Exploratory analyses
+## Moderation analysis: Developing HTN
+### How does the relationship between SBP and depression differ between people who become hypertensive and those who don't? 
+Inclusion: Participants who were not hypertensive at baseline.
+1. HTN is defined as HTN diagnosis or intake of antiHTN meds at baseline.
+2. Change ifelse statement below to also define SBP>140 mmHg as criterion for hypertension.
+
+```{r, echo=FALSE}
+# create HTN variable with labels
+ukb_lbl$hypertension.0 <- ifelse(ukb$mean_sbp.0 >= 140, 0, 0) #(!!!)
+ukb_lbl$hypertension.0[ukb$htn_meds_count.0>0 | ukb$high_bp.0>0]<-1
+var_lab(ukb_lbl$hypertension.0) = "Hypertension"
+val_lab(ukb_lbl$hypertension.0) = c("No HTN" = 0, "HTN" = 1)
+table(ukb_lbl$hypertension.0)
+
+ukb_lbl$hypertension.2 <- ifelse(ukb$mean_sbp.2 >= 140, 0, 0) #(!!!)
+ukb_lbl$hypertension.2[ukb$htn_meds_count.2>0 | ukb$high_bp.2>0]<-1
+var_lab(ukb_lbl$hypertension.2) = "Hypertension at 2nd follow-up"
+val_lab(ukb_lbl$hypertension.2) = c("No HTN" = 0, "HTN" = 1)
+table(ukb_lbl$hypertension.2)
+
+# exclude people who were hypertensive at baseline
+d <- subset(ukb_lbl, hypertension.0 < 1)
+table(d$hypertension.0)
+table(d$hypertension.2)
+
+# Test and plot change of SBP over time
+# t.test(x=d$mean_sbp.2, y=d$mean_sbp.0, paired = TRUE) # All participants, Recoded as baseline > follow-up for easier readability
+
+d_long <- dplyr::select(d, f.eid, hypertension.2, mean_sbp.0, mean_sbp.2)
+d_long <- unlab(d_long)
+d_long <- drop_na(d_long)
+d_long %>% group_by(hypertension.2) %>% summarise(n=n())
+out <- t.test(x=d_long$mean_sbp.2, y=d_long$mean_sbp.0, paired = TRUE) # Recoded as baseline > follow-up for easier readability
+
+d_long <- d_long %>% 
+  pivot_longer(
+   cols = c(-1,-2),
+   names_to = c(".value","assessment"),
+   names_pattern = "(.*)(.)$",
+   values_drop_na = TRUE)
+d_long <- d_long %>% group_by(f.eid) %>% filter(n()>1)
+
+summary_d_long <- d_long %>%
+  group_by(assessment) %>%
+  select(-f.eid, -hypertension.2) %>%
+  summarise_all(funs(mean, sd)) 
+
+summary_d_long <- mutate(summary_d_long, assessment = ifelse(assessment == 0, "Baseline", "Follow-up"))
+
+ggplot(data = summary_d_long, aes(assessment, y = mean)) +
+  # geoms for raw data
+  #geom_point(data = d_long, aes(x = assessment, colour = factor(hypertension.2), y = mean_sbp.), alpha =.2, size=1) +
+  #individual lines
+  #geom_line(data = d_long, aes(x = assessment,y = mean_sbp., group=f.eid, colour = factor(hypertension.2)), alpha = .1) +
+  # geoms for summary data
+  geom_point() +
+  geom_errorbar(data = summary_d_long, aes(x = assessment, ymin = mean-sd, ymax = mean+sd), width = 0.2) +
+  geom_line(data = summary_d_long, aes(group = 1)) +
+  annotate("text", x = 1.2, y = 155, label = "Mean increase = 3.820", size = 6) +
+  labs(x = "Assessment",
+       y = "SBP [mmHg]") +
+  theme(text = element_text(size = 18), axis.text = element_text(size = 18), legend.position = "none")
+ggsave("mock_increase_sbp.0.2.png", width = 5, height = 4, device='png', dpi=600)
+
+# density plot
+ggplot(subset(d,!is.na(hypertension.2)), aes(x=mean_sbp.0, fill=factor(hypertension.2), colour=factor(hypertension.2))) +
+    geom_density(alpha=0.5) +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  scale_fill_manual(values=c("#41b6c4","#081d58")) +
+  guides(fill=guide_legend("Hypertension (HTN) at 10y follow-up"), color = FALSE) +
+  labs(x = "Systolic Blood Pressure (mmHg)",
+       y = "Density") +
+  theme(text = element_text(size = 22), axis.text = element_text(size = 18), legend.position = c(0.7, 0.9))
+ggsave("mock_density_sbp.0.png", width = 10, height = 5, device='png', dpi=600)
+
+
+
+
+# Do those who develop HTN already show baseline differences in mental health?
+table1(~ mean_sbp.0 + mean_sbp.2 + depr_c.0 + depr_c.2 + wb.0 + wb.2 | hypertension.2, 
+       data=subset(d)) #sbp and mood by hypertension at follow-up 
+t.test(d$mean_sbp.0 ~ factor(d$hypertension.2)) # after exclusion
+
+# compare mood of later HTN at baseline uncorrected and corrected for SBP and covariates
+t.test(ukb_lbl$depr_c.0 ~ factor(ukb_lbl$hypertension.2)) #All participants before exclusion of baseline hypertension
+t.test(d$depr_c.0 ~ factor(d$hypertension.2)) # after exclusion
+t.test(d$wb.0 ~ factor(d$hypertension.2)) # after exclusion
+
+# prepare data
+d$f.31.0.0 <- as.numeric(d$f.31.0.0)
+#d_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, hypertension.2, 
+#                                                     f.21003.0.0, f.31.0.0, f.21001.0.0))))
+d_scaled <- d
+d_scaled <- mutate(d_scaled, hypertension.2 = as.factor(hypertension.2))
+# depression
+mdl_fit_d.0_mock_BPuncorr <- lm(depr_c.0 ~ hypertension.2, data = d_scaled)
+summary(mdl_fit_d.0_mock_BPuncorr)
+mdl_fit_d.0_mock_BPcorr <- lm(depr_c.0 ~ mean_sbp.0 + hypertension.2, data = d_scaled)
+summary(mdl_fit_d.0_mock_BPcorr)
+p1 <- effect_plot(mdl_fit_d.0_mock_BPuncorr, pred = hypertension.2, interval = TRUE,
+            x.label = "Hypertension at follow-up (unadjusted)", y.label = "Depressive symptoms at baseline")
+p1 + ylim(1.3,1.4)
+ggsave("mock_effect_plot_unadj_d.0.png", width = 4, height = 3, device='png', dpi=600)
+p2 <- effect_plot(mdl_fit_d.0_mock_BPcorr, pred = hypertension.2, interval = TRUE,
+            x.label = "Hypertension at follow-up (adjusted for SBP)", y.label = "Depressive symptoms at baseline")
+p2 + ylim(1.3,1.4)
+ggsave("mock_effect_plot_adj_d.0.png", width = 4, height = 3, device='png', dpi=600)
+
+
+# well-being
+mdl_fit_wb.0_mock_BPuncorr <- lm(wb.0 ~ hypertension.2, data = d_scaled)
+summary(mdl_fit_wb.0_mock_BPuncorr)
+mdl_fit_wb.0_mock_BPcorr <- lm(wb.0 ~ mean_sbp.0 + hypertension.2, data = d_scaled)
+summary(mdl_fit_wb.0_mock_BPcorr)
+p3 <- effect_plot(mdl_fit_wb.0_mock_BPuncorr, pred = hypertension.2, interval = TRUE,
+            x.label = "Hypertension at follow-up (unadjusted)", y.label = "Well-being at baseline")
+p3 + ylim(4.45,4.6)
+ggsave("mock_effect_plot_unadj_wb.0.png", width = 4, height = 3, device='png', dpi=600)
+p4 <- effect_plot(mdl_fit_wb.0_mock_BPcorr, pred = hypertension.2, interval = TRUE, 
+            x.label = "Hypertension at follow-up (adjusted for SBP)", y.label = "Well-being at baseline")
+p4 + ylim(4.45,4.6)
+ggsave("mock_effect_plot_adj_wb.0.png", width = 4, height = 3, device='png', dpi=600)
+
+
+### bubble plots for moderation
+dd <- subset(d,!is.na(hypertension.2) & !is.na(mean_sbp.2) & !is.na(depr_c.2))
+dd$density <- fields::interp.surface(
+  MASS::kde2d(dd$mean_sbp.2, dd$depr_c.2), as.data.frame(dd[,c("mean_sbp.2", "depr_c.2")]))
+f2.1 <- ggplot(dd, aes(x=mean_sbp.2, y=depr_c.2, color = factor(hypertension.2), alpha = 1/density)) + 
+  geom_count(aes(size = after_stat(prop)), show.legend = FALSE) +
+  scale_size_area(max_size = 15) +
+  scale_alpha(range = c(.6, 1)) +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  geom_smooth(method=lm, se=TRUE) + 
+  labs(x = "Systolic Blood Pressure (mmHg) at 10y follow-up",
+       y = "Depressive Symptoms at 10y follow-up",
+       color = c("Hypertension (HTN)\nat 10y follow-up")) +
+  guides(alpha = FALSE) +
+  theme(text = element_text(size = 18), axis.text = element_text(size = 14), legend.position = c(0.85, 0.88))
+f2.1
+ggsave("mock_sbp2_depr2_htn2.png", plot = f2.1, width = 10, height = 7.5, device='png', dpi=600)
+
+
+dd <- subset(d,!is.na(hypertension.2) & !is.na(mean_sbp.0) & !is.na(depr_c.0))
+dd$density <- fields::interp.surface(
+  MASS::kde2d(dd$mean_sbp.0, dd$depr_c.0), as.data.frame(dd[,c("mean_sbp.0", "depr_c.0")]))
+f2.2 <- ggplot(dd, aes(x=mean_sbp.0, y=depr_c.0, color = factor(hypertension.2),alpha = 1/density)) +
+  geom_count(aes(size = after_stat(prop)), show.legend = FALSE) +
+  scale_size_area(max_size = 15) +
+  scale_alpha(range = c(.4, .5)) +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  geom_smooth(method=lm, se=TRUE) + 
+  labs(x = "Systolic Blood Pressure (mmHg)",
+       y = "Depressive Symptoms",
+       color = "Hypertension (HTN)\nat 10y follow-up") +
+  guides(alpha = FALSE) +
+  theme(text = element_text(size = 18), axis.text = element_text(size = 18), legend.position = c(0.85, 0.88))
+f2.2
+ggsave("mock_sbp0_depr0_htn2.png", plot = f2.2, width = 10, height = 7.5, device='png', dpi=600)
+#grid.arrange(f2.1, f2.2, nrow=1)
+
+
+# well-being
+dd <- subset(d,!is.na(hypertension.2) & !is.na(mean_sbp.2) & !is.na(wb.2))
+dd$density <- fields::interp.surface(
+  MASS::kde2d(dd$mean_sbp.2, dd$wb.2), as.data.frame(dd[,c("mean_sbp.2", "wb.2")]))
+f3.1 <- ggplot(dd, aes(x=mean_sbp.2, y=wb.2, color = factor(hypertension.2), alpha = 1/density)) + 
+  geom_count(aes(size = after_stat(prop)), show.legend = FALSE) +
+  scale_size_area(max_size = 15) +
+  scale_alpha(range = c(.6, 1)) +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  geom_smooth(method=lm, se=TRUE) + 
+  labs(x = "Systolic Blood Pressure (mmHg) at 10y follow-up",
+       y = "Well-being at 10y follow-up",
+       color = c("Hypertension (HTN)\nat 10y follow-up")) +
+  guides(alpha = FALSE) +
+  theme(text = element_text(size = 18), axis.text = element_text(size = 14), legend.position = c(0.85, 0.18))
+f3.1
+ggsave("mock_sbp2_wb2_htn2.png", plot = f3.1, width = 10, height = 7.5, device='png', dpi=600)
+
+dd <- subset(d,!is.na(hypertension.2) & !is.na(mean_sbp.0) & !is.na(wb.0))
+dd$density <- fields::interp.surface(
+  MASS::kde2d(dd$mean_sbp.0, dd$wb.0), as.data.frame(dd[,c("mean_sbp.0", "wb.0")]))
+f3.2 <- ggplot(dd, aes(x=mean_sbp.0, y=wb.0, color = factor(hypertension.2),alpha = 1/density)) +
+  geom_count(aes(size = after_stat(prop)), show.legend = FALSE) +
+  scale_size_area(max_size = 15) +
+  scale_alpha(range = c(.4, .5)) +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  geom_smooth(method=lm, se=TRUE) + 
+  labs(x = "Systolic Blood Pressure (mmHg)",
+       y = "Well-being",
+       color = "Hypertension (HTN)\nat 10y follow-up") +
+  guides(alpha = FALSE) +
+  theme(text = element_text(size = 18), axis.text = element_text(size = 18), legend.position = c(0.85, 0.18))
+f3.2
+ggsave("mock_sbp0_wb0_htn2.png", plot = f3.2, width = 10, height = 7.5, device='png', dpi=600)
+
+
+# test models
+### prepare data
+d$f.31.0.0 <- as.numeric(d$f.31.0.0)
+
+# depression
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, hypertension.2, 
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0))))
+mdl_fit_d.0_mock <- lm(depr_c.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0, data = d_scaled)
+summary(mdl_fit_d.0_mock)
+car::vif(mdl_fit_d.0_mock)
+
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.2, mean_sbp.0, hypertension.2, 
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0))))
+mdl_fit_d.2_mock <- lm(depr_c.2 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0, data = d_scaled)
+summary(mdl_fit_d.2_mock)
+
+
+#well-being
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, wb.0, mean_sbp.0, hypertension.2, 
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0))))
+mdl_fit_wb.0_mock <- lm(wb.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0, data = d_scaled)
+summary(mdl_fit_wb.0_mock)
+car::vif(mdl_fit_wb.0_mock)
+
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, wb.2, mean_sbp.0, hypertension.2, 
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0))))
+mdl_fit_wb.2_mock <- lm(wb.2 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0, data = d_scaled)
+summary(mdl_fit_wb.2_mock)
+
+# additional model using the same set of covariates as the confirmatory analyses
+### prepare data
+d$f.31.0.0 <- as.numeric(d$f.31.0.0)
+d$f.2443.0.0 <- as.numeric(d$f.2443.0.0)
+
+# depression
+## same as cross-sectional analyis
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, hypertension.2, 
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0,
+                                                   angina.0, heartattack.0, f.2443.0.0, depr_l.0, mean_hr.0))))
+mdl_fit_d.0_mock_full <- lm(depr_c.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0 + angina.0 +
+                         heartattack.0 + f.2443.0.0 + depr_l.0 + mean_hr.0, data = d_scaled)
+summary(mdl_fit_d.0_mock_full) # interaction ns
+car::vif(mdl_fit_d.0_mock_full)
+
+## without disease data which have lots of NAs
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, hypertension.2, 
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0,
+                                                   f.2443.0.0, mean_hr.0))))
+mdl_fit_d.0_mock_full <- lm(depr_c.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0 +
+                        f.2443.0.0 + mean_hr.0, data = d_scaled)
+summary(mdl_fit_d.0_mock_full) # interaction p = 0.02
+car::vif(mdl_fit_d.0_mock_full)
+
+## with reviewer suggested covariates
+d$f.31.0.0 <- as.numeric(d$f.31.0.0)
+d$f.2443.0.0 <- as.numeric(d$f.2443.0.0)
+d$f.738.0.0 <- as.numeric(d$f.738.0.0)
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, hypertension.2,
+                                                     f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0,
+                                                     f.21001.0.0, mean_hr.0, f.738.0.0, education.0, ethn.0, f.1200.0.0, f.54.0.0))))
+mdl_fit_d.0_mock_full <- lm(depr_c.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0 + angina.0 +
+                         heartattack.0 + f.2443.0.0 + depr_l.0 + mean_hr.0 + 
+                           f.738.0.0 + education.0 + ethn.0 + f.1200.0.0 + f.54.0.0, data = d_scaled)
+summary(mdl_fit_d.0_mock_full) # interaction ns
+
+## with reviewer suggested covariates without diseases which have lots of NAs
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, hypertension.2,
+                                                     f.21003.0.0, f.31.0.0, 
+                                                     f.2443.0.0,
+                                                     f.21001.0.0, mean_hr.0, f.738.0.0, education.0, ethn.0, f.1200.0.0, f.54.0.0))))
+mdl_fit_d.0_mock_full <- lm(depr_c.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0 + f.2443.0.0 + mean_hr.0 + 
+                           f.738.0.0 + education.0 + ethn.0 + f.1200.0.0 + f.54.0.0, data = d_scaled)
+summary(mdl_fit_d.0_mock_full) # interaction ns
+
+## only significant covariates (this model explains most variance)
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, depr_c.0, mean_sbp.0, hypertension.2,
+                                                     f.21003.0.0, f.31.0.0, 
+                                                     angina.0, f.2443.0.0, depr_l.0,
+                                                     f.21001.0.0, mean_hr.0, f.738.0.0, ethn.0, f.1200.0.0))))
+mdl_fit_d.0_mock_full <- lm(depr_c.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0 + angina.0 +
+                          f.2443.0.0 + depr_l.0 + mean_hr.0 + 
+                           f.738.0.0 + ethn.0 + f.1200.0.0, data = d_scaled)
+summary(mdl_fit_d.0_mock_full) # interaction ns
+
+
+# well-being
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, wb.0, mean_sbp.0, hypertension.2, 
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0,
+                                                   angina.0, heartattack.0, f.2443.0.0, depr_l.0, mean_hr.0))))
+mdl_fit_wb.0_mock_full <- lm(wb.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0 + angina.0 +
+                         heartattack.0 + f.2443.0.0 + depr_l.0 + mean_hr.0, data = d_scaled)
+summary(mdl_fit_wb.0_mock_full) # interaction p=0.058
+car::vif(mdl_fit_wb.0_mock_full)
+
+```
+
+
+## Brain imaging: Hariri task
+### Faces-shapes contrast in amygdala mask vs. whole-brain mask 
+
+```{r, echo=FALSE, fig.width=10, fig.height=10}
+
+ukb_lbl$high_sbp.0 <-ifelse(ukb$mean_sbp.0 < 140, "SBP<140", "SBP>140")
+ukb_lbl$high_sbp.2 <-ifelse(ukb$mean_sbp.2 < 140, "SBP<140", "SBP>140")
+
+# add meaningful labels
+var_lab(ukb_lbl$high_sbp.0) = "SBP categories"
+val_lab(ukb_lbl$high_sbp.0) = c("SBP < 140" = 0, "SBP > 140" = 1)
+var_lab(ukb_lbl$f.25054.2.0) = "Amygdala [median z-stat, faces>shapes]"
+var_lab(ukb_lbl$f.25050.2.0) = "Whole-brain [median z-stat, faces>shapes]"
+
+
+# plot Hariri results by HTN
+### violin plots
+f1.1 <- ggplot(subset(ukb_lbl,!is.na(hypertension.2)), aes(x=factor(hypertension.2), y = f.25054.2.0)) +
+  geom_violin(aes(fill = factor(hypertension.2))) + 
+  geom_boxplot(width = 0.1, alpha = 0, colour = "grey80") +
+  scale_fill_manual(values=c("#41b6c4","#081d58")) +
+  #scale_fill_manual(values=wes_palette(name="Moonrise2")) +
+  #ylim(-5, 10) +
+  labs(x = element_blank(),
+       y = "Amygdala [median z-stat, faces>shapes]") +
+  theme(text = element_text(size = 16), axis.text = element_text(size = 16), legend.position = "none")
+
+f1.2 <- ggplot(subset(ukb_lbl,!is.na(hypertension.2)), aes(x=factor(hypertension.2), y = f.25050.2.0)) +
+  geom_violin(aes(fill = factor(hypertension.2))) + 
+  geom_boxplot(width = 0.1, alpha = 0, colour = "grey80") +  
+  scale_fill_manual(values=c("#41b6c4","#081d58")) +
+  #scale_fill_manual(values=wes_palette(name="Moonrise2")) +
+  #ylim(-5, 10) +
+  labs(x = element_blank(),
+       y = "Whole-brain [median z-stat, faces>shapes]") +
+  theme(text = element_text(size = 16), axis.text = element_text(size = 16), legend.position = "none")
+
+grid.arrange(f1.1, f1.2, nrow=1)
+
+t.test(ukb_lbl$f.25054.2.0 ~ factor(ukb_lbl$hypertension.2))
+t.test(ukb_lbl$f.25050.2.0 ~ factor(ukb_lbl$hypertension.2))
+
+
+# plot SBP and hariri task by HTN.2
+### scatter + density plots with baseline measures
+p01 <- ggplot(subset(ukb_lbl,!is.na(hypertension.2)), aes(x=mean_sbp.0, y=f.25054.2.0)) +
+  geom_point(colour = "grey20", alpha = .5) +
+  stat_density2d(aes(fill=..level.., alpha =..level..), geom="polygon", colour = "grey80") +
+  scale_fill_continuous(type = "viridis") +
+  geom_smooth(method=lm, se=TRUE, colour = "grey20") + 
+  guides(alpha="none", fill="none") +
+  #ylim(-5,5.5) +
+  labs(x = element_blank(),#"Systolic Blood Pressure (mmHg) at baseline",
+       y = "Amygdala [median z-stat, faces>shapes]") +
+  theme(text = element_text(size = 14), axis.text = element_text(size = 12))
+
+p1 <- ggplot(subset(ukb_lbl,!is.na(hypertension.2)), aes(x=mean_sbp.0, y=f.25054.2.0, colour = factor(hypertension.2))) +
+   geom_point(alpha = .5) +
+  stat_density2d(aes(fill=..level.., alpha=..level..), geom="polygon") +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  scale_fill_continuous(type = "viridis") +
+  guides(alpha="none", fill="none") +
+  geom_smooth(method=lm, se=TRUE, show.legend = FALSE) + 
+  #ylim(-1,4) +
+  labs(x = element_blank(),#"Systolic Blood Pressure (mmHg) at baseline",
+       y = element_blank(),#"Amygdala [median z-stat, faces>shapes]",
+       color = "Hypertension (HTN) at 10y follow-up") +
+  theme(text = element_text(size = 14), axis.text = element_text(size = 12), legend.position = "none")
+
+p02 <- ggplot(ukb_lbl, aes(x=mean_sbp.0, y=f.25050.2.0)) +
+  geom_point(colour = "grey20", alpha = .5) +
+  stat_density2d(aes(fill=..level.., alpha =..level..), geom="polygon", colour = "grey80") +
+  scale_fill_continuous(type = "viridis") +
+  geom_smooth(method=lm, se=TRUE, colour = "grey20") + 
+  guides(alpha="none", fill="none") +
+  #ylim(-5,10) +
+  labs(x = "Systolic Blood Pressure (mmHg) at baseline",
+       y = "Whole-brain [median z-stat, faces>shapes]") +
+  theme(text = element_text(size = 14), axis.text = element_text(size = 12))
+
+p2 <- ggplot(subset(ukb_lbl,!is.na(hypertension.2)), aes(x=mean_sbp.0, y=f.25050.2.0, colour = factor(hypertension.2))) +
+  geom_point(alpha = .5) +
+  stat_density2d(aes(fill=..level.., alpha=..level..), geom="polygon") +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  scale_fill_continuous(type = "viridis") +
+  guides(alpha="none", fill="none") +
+  geom_smooth(method=lm, se=TRUE, show.legend = FALSE) + 
+  #ylim(-5,10) +
+  labs(x = "Systolic Blood Pressure (mmHg) at baseline",
+       y = element_blank())+#"Whole-brain [median z-stat, faces>shapes]",
+       #color = "Hypertension (HTN) at 10y follow-up") +
+  theme(text = element_text(size = 14), axis.text = element_text(size = 12), legend.position = "none")
+
+fig <- grid.arrange(f1.1 + theme(axis.text.x = element_blank()), 
+             p01 + labs(y=element_blank()) + theme(axis.text = element_blank()), 
+             p1 + theme(axis.text = element_blank()), 
+             f1.2,
+             p02 + labs(y=element_blank()) + theme(axis.text.y = element_blank()), 
+             p2 + theme(axis.text.y = element_blank()), 
+             nrow = 2)
+ggsave("hariri_htn.0.png", plot = fig, width = 15, height = 10, device='png', dpi=600)
+
+
+### scatter + density plots at imaging
+p01 <- ggplot(subset(ukb_lbl,!is.na(hypertension.2)), aes(x=mean_sbp.2, y=f.25054.2.0)) +
+  geom_point(colour = "grey20", alpha = .5) +
+  stat_density2d(aes(fill=..level.., alpha =..level..), geom="polygon", colour = "grey80") +
+  scale_fill_continuous(type = "viridis") +
+  geom_smooth(method=lm, se=TRUE, colour = "grey20") + 
+  guides(alpha="none", fill="none") +
+  #ylim(-5,5.5) +
+  labs(x = element_blank(),#"Systolic Blood Pressure (mmHg) at imaging",
+       y = "Amygdala [median z-stat, faces>shapes]") +
+  theme(text = element_text(size = 14), axis.text = element_text(size = 12))
+
+p1 <- ggplot(subset(ukb_lbl,!is.na(hypertension.2)), aes(x=mean_sbp.2, y=f.25054.2.0, colour = factor(hypertension.2))) +
+   geom_point(alpha = .5) +
+  stat_density2d(aes(fill=..level.., alpha=..level..), geom="polygon") +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  scale_fill_continuous(type = "viridis") +
+  guides(alpha="none", fill="none") +
+  geom_smooth(method=lm, se=TRUE, show.legend = FALSE) + 
+  #ylim(-1,4) +
+  labs(x = element_blank(),#"Systolic Blood Pressure (mmHg) at imaging",
+       y = element_blank(),#"Amygdala [median z-stat, faces>shapes]",
+       color = "Hypertension (HTN) at 10y follow-up") +
+  theme(text = element_text(size = 14), axis.text = element_text(size = 12), legend.position = "none")
+
+p02 <- ggplot(ukb_lbl, aes(x=mean_sbp.2, y=f.25050.2.0)) +
+  geom_point(colour = "grey20", alpha = .5) +
+  stat_density2d(aes(fill=..level.., alpha =..level..), geom="polygon", colour = "grey80") +
+  scale_fill_continuous(type = "viridis") +
+  geom_smooth(method=lm, se=TRUE, colour = "grey20") + 
+  guides(alpha="none", fill="none") +
+  #ylim(-5,10) +
+  labs(x = "Systolic Blood Pressure (mmHg) at imaging",
+       y = "Whole-brain [median z-stat, faces>shapes]") +
+  theme(text = element_text(size = 14), axis.text = element_text(size = 12))
+
+p2 <- ggplot(subset(ukb_lbl,!is.na(hypertension.2)), aes(x=mean_sbp.2, y=f.25050.2.0, colour = factor(hypertension.2))) +
+  geom_point(alpha = .5) +
+  stat_density2d(aes(fill=..level.., alpha=..level..), geom="polygon") +
+  scale_colour_manual(values=c("#41b6c4","#081d58")) +
+  scale_fill_continuous(type = "viridis") +
+  guides(alpha="none", fill="none") +
+  geom_smooth(method=lm, se=TRUE, show.legend = FALSE) + 
+  #ylim(-5,10) +
+  labs(x = "Systolic Blood Pressure (mmHg) at imaging",
+       y = element_blank())+#"Whole-brain [median z-stat, faces>shapes]",
+       #color = "Hypertension (HTN) at 10y follow-up") +
+  theme(text = element_text(size = 14), axis.text = element_text(size = 12), legend.position = "none")
+
+fig <- grid.arrange(f1.1 + theme(axis.text.x = element_blank()), 
+             p01 + labs(y=element_blank()) + theme(axis.text = element_blank()), 
+             p1 + theme(axis.text = element_blank()), 
+             f1.2,
+             p02 + labs(y=element_blank()) + theme(axis.text.y = element_blank()), 
+             p2 + theme(axis.text.y = element_blank()), 
+             nrow = 2)
+ggsave("hariri_htn.2.png", plot = fig, width = 15, height = 10, device='png', dpi=600)
+
+###
+
+# test models
+d <- ukb_lbl
+
+d$f.31.0.0 <- as.numeric(d$f.31.0.0)
+
+# hariri amygdala, SBP.0*HTN.2
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, f.25054.2.0, mean_sbp.0, hypertension.2,
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0))))
+mdl_fit_hariri_amy <- lm(f.25054.2.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0, data = d_scaled)
+summary(mdl_fit_hariri_amy)
+car::vif(mdl_fit_hariri_amy)
+
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, f.25050.2.0, mean_sbp.0, hypertension.2,
+                                                     f.21003.0.0, f.31.0.0, f.21001.0.0))))
+mdl_fit_hariri_brain <- lm(f.25050.2.0 ~ mean_sbp.0*hypertension.2 + f.21003.0.0 + f.31.0.0 + f.21001.0.0, data = d_scaled)
+summary(mdl_fit_hariri_brain)
+
+# hariri amygdala, SBP.2*HTN.2
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, f.25054.2.0, mean_sbp.2, hypertension.2,
+                                                     f.21003.2.0, f.31.0.0, f.21001.2.0))))
+mdl_fit_hariri_amy.2 <- lm(f.25054.2.0 ~ mean_sbp.2*hypertension.2 + f.21003.2.0 + f.31.0.0 + f.21001.2.0, data = d_scaled)
+summary(mdl_fit_hariri_amy.2)
+car::vif(mdl_fit_hariri_amy.2)
+
+d_scaled <- data.frame(scale(na.omit(dplyr::select(d, f.25050.2.0, mean_sbp.2, hypertension.2, htn_meds_count.2,
+                                                     f.21003.2.0, f.31.0.0, f.21001.2.0))))
+mdl_fit_hariri_brain.2 <- lm(f.25050.2.0 ~ mean_sbp.2*hypertension.2 + htn_meds_count.2 + f.21003.2.0 + f.31.0.0 + f.21001.2.0, data = d_scaled)
+summary(mdl_fit_hariri_brain.2)
+
+
+```
+
+
+## Comprehensive overview of results with confidence intervals and forest plots:
+
+```{r, echo=TRUE}
+# forest plots
+# main results from replication
+cfs = c("Systolic blood pressure" = "mean_sbp.0",
+        "Diagnosed hypertension" = "high_bp.0",
+        "No. antihypertensive medication" = "htn_meds_count.0",
+        "Age" = "f.21003.0.0",
+        "Gender" = "f.31.0.0",
+        "Angina pectoris" = "angina.0",
+        "Heart attack" = "heartattack.0",
+        "Diabetes" = "f.2443.0.0",
+        "Lifetime depression" = "depr_l.0",
+        "BMI" = "f.21001.0.0",
+        "Heart rate" = "mean_hr.0")
+# for models with additional covariates
+cfs_covs = c("Systolic blood pressure" = "mean_sbp.0",
+        "Diagnosed hypertension" = "high_bp.0",
+        "No. antihypertensive medication" = "htn_meds_count.0",
+        "Age" = "f.21003.0.0",
+        "Gender" = "f.31.0.0",
+        "Angina pectoris" = "angina.0",
+        "Heart attack" = "heartattack.0",
+        "Diabetes" = "f.2443.0.0",
+        "Lifetime depression" = "depr_l.0",
+        "BMI" = "f.21001.0.0",
+        "Heart rate" = "mean_hr.0",
+        "Household income" = "f.738.0.0",
+        "Education" = "education.0",
+        "Ethnic background" = "ethn.0",
+        "Insomnia" = "f.1200.0.0",
+        "Assessment centre" = "f.54.0.0")
+
+
+plot_summs(mdl_fit1, mdl_fit3,
+           coefs = cfs, model.names = c("Depressive symptoms (baseline)", "Well-being (baseline)"),
+           legend.title = "Outcomes",
+           colors = "Qual1") + labs(x="Standardized Beta") + xlim(c(-0.2, 0.3)) +
+                             theme(text = element_text(size=16),
+                                    axis.text.x = element_text(size=14),
+                                    axis.text.y = element_text(size=14),
+                                   legend.position = "top"
+                                   )
+ggsave("forest_plot.0.png", width = 14, height = 5, device='png', dpi=600)
+
+plot_summs(mdl_fit1_covs, mdl_fit3_covs,
+           coefs = cfs_covs, model.names = c("Depressive symptoms (baseline)", "Well-being (baseline)"),
+           legend.title = "Outcomes",
+           colors = "Qual1") + labs(x="Standardized Beta") + xlim(c(-0.2, 0.3)) +
+                             theme(text = element_text(size=16),
+                                    axis.text.x = element_text(size=14),
+                                    axis.text.y = element_text(size=14),
+                                   legend.position = "top"
+                                   )
+ggsave("forest_plot_covs.0.png", width = 14, height = 5, device='png', dpi=600)
+
+plot_summs(mdl_fit4, mdl_fit6, mdl_fit5,
+           coefs = cfs, model.names = c("Depressive symptoms (10y follow-up)", 
+                                        "Well-being (10y follow-up)", "Depressive symptoms (6y follow-up)"),
+           legend.title = "Outcomes",
+           colors = "Qual1") + labs(x="Standardized Beta") + xlim(c(-0.2, 0.3)) +
+                             theme(text = element_text(size=16),
+                                     axis.text.x = element_text(size=14),
+                                     axis.text.y = element_text(size=14),
+                                     legend.position = "top")
+ggsave("forest_plot.2s.png", width = 14, height = 5, device='png', dpi=600)
+
+
+plot_summs(mdl_fit4, mdl_fit6,
+           coefs = cfs, model.names = c("Depressive symptoms (10y follow-up)", 
+                                        "Well-being (10y follow-up)"),
+           legend.title = "Outcomes",
+           colors = "Qual1") + labs(x="Standardized Beta") + xlim(c(-0.2, 0.3)) +
+                              theme(text = element_text(size=16),
+                                     axis.text.x = element_text(size=14),
+                                     axis.text.y = element_text(size=14),
+                                    legend.position = "top") 
+ggsave("forest_plot.2.png", width = 14, height = 5, device='png', dpi=600)
+
+
+
+
+# effects of antiHTN meds
+plot_summs(mdl_fit7, mdl_fit8, 
+           model.names = c("Depression baseline", "Well-being baseline"),
+           colors = "Qual3")
+# effects of antiDEPR meds
+plot_summs(mdl_fit77, mdl_fit88,  
+           model.names = c("Depression baseline", "Well-being baseline"),
+           colors = "Qual3")
+# subgroup analysis of people without/with antiDEPR meds
+plot_summs(mdl_fit_depr_meds0, mdl_fit_depr_meds1, coefs = cfs, 
+           model.names = c("Depression baseline: no antidepressants", 
+                           "Depression baseline: antidepressants"))
+# subgroup analysis of people without/with ANY meds
+plot_summs(mdl_fit_meds0, mdl_fit_meds1, 
+           model.names = c("Depression baseline: no meds", "Depression baseline: meds"))
+# subgroup analysis of people without/with DEPRESSION
+plot_summs(mdl_fit9, mdl_fit10, 
+           model.names = c("Depression baseline: no depression", "Depression baseline: depression only"))
+plot_summs(mdl_fit11, mdl_fit12, 
+           model.names = c("Well-being baseline: no depression", "Well-being baseline: depression only"))
+plot_summs(mdl_fit13, mdl_fit14, 
+           model.names = c("PHQ9: no depression", "PHQ9: depression only"))
+# subgroup analysis of people without/with DISEASES
+plot_summs(mdl_fit_d.0_excl0, mdl_fit_wb.0_excl0, mdl_fit_d.0_excl1, mdl_fit_wb.0_excl1,
+           coefs = cfs, 
+           model.names = c("Depression baseline: no diseases", "Well-being baseline: no diseases", 
+                           "Depression baseline: diseases", "Well-being baseline: diseases"), 
+           colors = "Qual3")
+
+summ(mdl_fit1, confint = TRUE, digits = 3)
+summ(mdl_fit1_covs, confint = TRUE, digits = 3)
+summ(mdl_fit2, confint = TRUE, digits = 3)
+summ(mdl_fit3, confint = TRUE, digits = 3)
+summ(mdl_fit3_covs, confint = TRUE, digits = 3)
+summ(mdl_fit4, confint = TRUE, digits = 3)
+summ(mdl_fit5, confint = TRUE, digits = 3)
+summ(mdl_fit6, confint = TRUE, digits = 3)
+
+summ(mdl_fit1_htn, confint = TRUE, digits = 3)
+summ(mdl_fit3_htn, confint = TRUE, digits = 3)
+
+summ(mdl_fit7, confint = TRUE, digits = 3)
+summ(mdl_fit8, confint = TRUE, digits = 3)
+
+summ(mdl_fit77, confint = TRUE, digits = 3)
+summ(mdl_fit88, confint = TRUE, digits = 3)
+
+summ(mdl_fit_depr_meds0, confint = TRUE, digits = 3)
+summ(mdl_fit_depr_meds1, confint = TRUE, digits = 3)
+summ(mdl_fit_wb_depr_meds0, confint = TRUE, digits = 3)
+summ(mdl_fit_wb_depr_meds1, confint = TRUE, digits = 3)
+
+summ(mdl_fit_meds0, confint = TRUE, digits = 3)
+summ(mdl_fit_meds1, confint = TRUE, digits = 3)
+summ(mdl_fit_wb_meds0, confint = TRUE, digits = 3)
+summ(mdl_fit_wb_meds1, confint = TRUE, digits = 3)
+
+summ(mdl_fit9, confint = TRUE, digits = 3)
+summ(mdl_fit10, confint = TRUE, digits = 3)
+summ(mdl_fit11, confint = TRUE, digits = 3)
+summ(mdl_fit12, confint = TRUE, digits = 3)
+summ(mdl_fit13, confint = TRUE, digits = 3)
+summ(mdl_fit14, confint = TRUE, digits = 3)
+
+summ(mdl_fit_d.0_excl0, confint = TRUE, digits = 3)
+summ(mdl_fit_wb.0_excl0, confint = TRUE, digits = 3)
+summ(mdl_fit_d.0_excl1, confint = TRUE, digits = 3)
+summ(mdl_fit_wb.0_excl1, confint = TRUE, digits = 3)
+
+
+summ(mdl_fit_d.0_mock, confint = TRUE, digits = 3)
+summ(mdl_fit_d.2_mock, confint = TRUE, digits = 3)
+summ(mdl_fit_wb.0_mock, confint = TRUE, digits = 3)
+summ(mdl_fit_wb.2_mock, confint = TRUE, digits = 3)
+
+summ(mdl_fit_d.0_mock_BPuncorr, confint = TRUE, digits = 3)
+summ(mdl_fit_d.0_mock_BPcorr, confint = TRUE, digits = 3)
+summ(mdl_fit_wb.0_mock_BPuncorr, confint = TRUE, digits = 3)
+summ(mdl_fit_wb.0_mock_BPcorr, confint = TRUE, digits = 3)
+
+summ(mdl_fit_hariri_amy, confint = TRUE, digits = 3)
+summ(mdl_fit_hariri_brain, confint = TRUE, digits = 3)
+
+summ(mdl_fit_hariri_amy.2, confint = TRUE, digits = 3)
+summ(mdl_fit_hariri_brain.2, confint = TRUE, digits = 3)
+
+```
+
+## Hospital records (HES) analyses
+### 1. Descriptives and agreement with self-report
+### get coding from ukbiobank website: https://biobank.ndph.ox.ac.uk/showcase/coding.cgi?id=19
+
+```{r, echo=TRUE}
+
+#install.packages("irr")
+library(irr)
+
+### Hospital records (primary "f.41202." and secondary "f.41204." ICD10 diagnoses)
+coding19 <- read.csv("schaare/bp_mood_prereg/data/coding19.tsv", sep = "\t")
+# count frequencies of different diagnosis categories
+hes.0 <- ukb %>% 
+  select(starts_with("f.41204.0.")) %>% 
+  gather(.) %>% 
+  group_by(as.factor(.$value)) %>% 
+  tally(.)
+# match to the name of diagnosis
+hes.0 <- hes.0 %>% 
+  merge(coding19, ., by.x = "coding", by.y = names(.)[1]) %>% 
+  arrange(n)
+# save results
+#write.table(meds.0, file = "/data/ukb_hes.csv", sep = "\t", row.names = F, qmethod = "double")
+
+# plot the diagnostic categories with names (only the top 50)
+# lollipop plot
+hes.0 %>%
+  filter(!is.na(meaning)) %>%
+  mutate(meaning=factor(meaning, levels=meaning)) %>%
+  tail(50) %>%
+  ggplot( aes(x=meaning, y=n)) +
+  geom_segment( aes(xend=meaning, yend=0)) +
+  geom_point( size=1, color="orange") +
+  xlab("ICD10 secondary diagnoses (top 50)") +
+  coord_flip() +
+  theme_bw()
+
+# any HES diagnosis for each participant
+hes_subj.0 <- ukb %>% 
+  select(f.eid, starts_with("f.41204.0.")) %>%
+  mutate_at(., dplyr::vars(-f.eid), ~(!is.na(.)))
+
+# find presence of any HES diagnosis per participant
+hes_subj.0 <- hes_subj.0 %>%
+  mutate(hes.0 = rowSums(.[,-1]))
+hes_subj.0 <- mutate(hes_subj.0, hes.0 = ifelse(hes.0 > 0, 1, NA))
+
+# add count to ukb data
+ukb <- as_tibble(merge(ukb, hes_subj.0[-c(2:185)], by = "f.eid"))
+ukb_lbl <- as_tibble(merge(ukb_lbl, hes_subj.0[-c(2:185)], by = "f.eid"))
+
+# How many people have hospital records?
+table(ukb$hes.0) # N = 340896, 161598 NAs
+
+
+### HTN: Agreement self-report and HES
+
+# HTN diagnosis for each participant
+hes_htn_subj.0 <- ukb %>% 
+  select(f.eid, starts_with("f.41204.0.")) %>%
+  mutate_at(., dplyr::vars(-f.eid), ~(match(., "I10")))
+
+# find HTN diagnosis per participant
+hes_htn_subj.0 <- hes_htn_subj.0 %>%
+  mutate(hes_htn.0 = rowSums(!is.na(.[,-1])))
+
+# add to ukb data
+ukb <- as_tibble(merge(ukb, hes_htn_subj.0[-c(2:185)], by = "f.eid"))
+ukb_lbl <- as_tibble(merge(ukb_lbl, hes_htn_subj.0[-c(2:185)], by = "f.eid"))
+
+# compute inter-rater reliability
+d <- subset(ukb_lbl, !is.na(hes.0))
+table(d$hes_htn.0)
+table(d$hes_htn.0, d$high_bp.0)
+ct <- dplyr::select(d, hes_htn.0, high_bp.0)
+ct <- drop_na(ct) # N = 340216
+kappa2(ct) # Kappa = 0.583 -> moderate agreement
+
+
+### Depression: Agreement self-report and HES
+# Depression diagnosis for each participant
+hes_cols <- ukb %>% 
+  select(starts_with("f.41204.0.")) %>% names()
+
+# remove depression with psychosis
+hes_depr_subj.0 <- ukb %>% 
+  select(f.eid, starts_with("f.41204.0.")) %>%
+  mutate_at(dplyr::vars(hes_cols), ~na_if(., "F323"))
+
+x <- data.frame(rowSums(hes_depr_subj.0 == "F320", na.rm = T))
+x[,2] <- rowSums(hes_depr_subj.0 == "F321", na.rm = T)
+x[,3] <- rowSums(hes_depr_subj.0 == "F328", na.rm = T)
+x[,4] <- rowSums(hes_depr_subj.0 == "F329", na.rm = T)
+x[,5] <- rowSums(hes_depr_subj.0 == "F330", na.rm = T)
+x[,6] <- rowSums(hes_depr_subj.0 == "F331", na.rm = T)
+x[,7] <- rowSums(hes_depr_subj.0 == "F332", na.rm = T)
+x[,8] <- rowSums(hes_depr_subj.0 == "F334", na.rm = T)
+x[,9] <- rowSums(hes_depr_subj.0 == "F338", na.rm = T)
+x[,10] <- rowSums(hes_depr_subj.0 == "F339", na.rm = T)
+x[,11] <- rowSums(x, na.rm=T)
+
+hes_depr_subj.0 <- cbind(hes_depr_subj.0, hes_depr.0 = x[,11])
+
+# find Depr diagnosis per participant
+hes_depr_subj.0 <- mutate(hes_depr_subj.0, hes_depr.0 = ifelse(hes_depr.0 > 0, 1, 0))
+
+# add to ukb data
+ukb <- as_tibble(merge(ukb, hes_depr_subj.0[-c(2:185)], by = "f.eid"))
+ukb_lbl <- as_tibble(merge(ukb_lbl, hes_depr_subj.0[-c(2:185)], by = "f.eid"))
+
+# compute inter-rater reliability
+d <- subset(ukb_lbl, !is.na(hes.0))
+table(d$hes_depr.0)
+table(d$hes_depr.0, d$depr_l.0)
+ct <- dplyr::select(d, hes_depr.0, depr_l.0)
+ct <- drop_na(ct) # N = 275991
+kappa2(ct) # Kappa = 0.324 -> fair agreement
+
+
+```
+
+### 2. Depression outcome from HES
+
+```{r, echo=TRUE}
+
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, hes_depr.0, mean_sbp.0, high_bp.0, htn_meds_count.0,
+                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, 
+                     f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+
+### HES depression
+outcome <- "hes_depr.0"
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "f.21001.0.0", "mean_hr.0")
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, hes_depr.0, mean_sbp.0, high_bp.0,
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, 
+                                                     f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit2_hes <- lm(mdl, data=dat_scaled)
+summary(mdl_fit2_hes)
+car::vif(mdl_fit2_hes)
+
+# calculate delta adj. r squared
+summary(mdl_fit2_hes)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+# plot and nicer summary
+summ(mdl_fit2_hes, confint = TRUE, digits = 3)
+
+# forest plots
+# main results from replication
+cfs = c("Systolic blood pressure" = "mean_sbp.0",
+        "Diagnosed hypertension" = "high_bp.0",
+        "No. antihypertensive medication" = "htn_meds_count.0",
+        "Age" = "f.21003.0.0",
+        "Gender" = "f.31.0.0",
+        "Angina pectoris" = "angina.0",
+        "Heart attack" = "heartattack.0",
+        "Diabetes" = "f.2443.0.0",
+        "BMI" = "f.21001.0.0",
+        "Heart rate" = "mean_hr.0")
+
+
+plot_summs(mdl_fit2_hes,
+           coefs = cfs, model.names = c("Hospital-diagnosed Depression"),
+           legend.title = "Outcome",
+           colors = "Qual1") + labs(x="Standardized Beta") + xlim(c(-0.1, 0.1)) +
+                             theme(text = element_text(size=16),
+                                    axis.text.x = element_text(size=14),
+                                    axis.text.y = element_text(size=14),
+                                   legend.position = "top"
+                                   )
+ggsave("forest_plot_hes_depr.0.png", width = 14, height = 5, device='png', dpi=600)
+
+```
+
+### 3. Cross-sectional model with HTN outcome from HES
+
+```{r, echo=TRUE}
+
+### HTN from HES
+### prepare data
+dat <- dplyr::select(ukb_lbl, f.eid, depr_c.0, wb.0, mean_sbp.0, hes_htn.0, htn_meds_count.0,
+                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                     f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+
+# define predictors and covariates
+predictors <- c("mean_sbp.0", "hes_htn.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0",
+          "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, depr_c.0, mean_sbp.0, hes_htn.0,
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0,
+                                                     f.21001.0.0, mean_hr.0))))
+
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit1_hes <- lm(mdl, data=dat_scaled)
+summary(mdl_fit1_hes)
+car::vif(mdl_fit1_hes)
+
+# calculate delta adj. r squared
+summary(mdl_fit1_hes)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+
+### well-being
+outcome <- "wb.0"
+predictors <- c("mean_sbp.0", "hes_htn.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0", 
+          "f.21001.0.0", "mean_hr.0")
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, wb.0, mean_sbp.0, hes_htn.0, 
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                                                     f.21001.0.0, mean_hr.0))))
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit3_hes <- lm(mdl, data=dat_scaled)
+summary(mdl_fit3_hes)
+car::vif(mdl_fit3_hes)
+
+# calculate delta adj. r squared
+summary(mdl_fit3_hes)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+
+# plot and nicer summary
+summ(mdl_fit1_hes, confint = TRUE, digits = 3)
+summ(mdl_fit3_hes, confint = TRUE, digits = 3)
+
+# forest plots
+# main results from replication
+cfs = c("Systolic blood pressure" = "mean_sbp.0",
+        "HES Diagnosed hypertension" = "hes_htn.0",
+        "No. antihypertensive medication" = "htn_meds_count.0",
+        "Age" = "f.21003.0.0",
+        "Gender" = "f.31.0.0",
+        "Angina pectoris" = "angina.0",
+        "Heart attack" = "heartattack.0",
+        "Diabetes" = "f.2443.0.0",
+        "Lifetime depression" = "depr_l.0",
+        "BMI" = "f.21001.0.0",
+        "Heart rate" = "mean_hr.0")
+
+
+plot_summs(mdl_fit1_hes, mdl_fit3_hes,
+           coefs = cfs, model.names = c("Depressive symptoms (baseline)", "Well-being (baseline)"),
+           legend.title = "Outcomes",
+           colors = "Qual1") + labs(x="Standardized Beta") + xlim(c(-0.2, 0.3)) +
+                             theme(text = element_text(size=16),
+                                    axis.text.x = element_text(size=14),
+                                    axis.text.y = element_text(size=14),
+                                   legend.position = "top"
+                                   )
+ggsave("forest_plot_hes.0.png", width = 14, height = 5, device='png', dpi=600)
+
+```
+
+## Survival bias assessment using death records
+
+```{r, echo=TRUE}
+
+# find first date of baseline and last date of follow-up
+min(ukb$f.53.0.0, na.rm = T) # "2006-03-13"
+max(ukb$f.53.2.0, na.rm = T) # "2020-02-09"
+sum(!is.na(ukb$f.53.2.0)) # 47933 follow-ups
+
+sum(!is.na(ukb$f.40000.0.0)) # 20442 deaths in total
+min(ukb$f.40000.0.0, na.rm = T) # "2006-05-10"
+max(ukb$f.40000.0.0, na.rm = T) # "2018-02-14"
+
+
+x <- ukb$f.40000.0.0 > ukb$f.53.0.0 # 20442 TRUE meaning 20442 died before the follow-up
+table(x)
+
+x <- ukb$f.40000.0.0 < ukb$f.53.2.0 # 81 FALSE meaning 81 died after the follow-up
+
+# check baseline, follow-up and death dates again of those 81
+data.frame(ukb$f.53.0.0[!is.na(ukb$f.40000.0.0[x])], ukb$f.53.2.0[!is.na(ukb$f.40000.0.0[x])],ukb$f.40000.0.0[!is.na(ukb$f.40000.0.0[x])])
+ukb$f.53.2.0[!is.na(ukb$f.40000.0.0[x])] < ukb$f.40000.0.0[!is.na(ukb$f.40000.0.0[x])]
+
+# Are the 20442 who died different from the main sample? And how many of those have had HTN?
+ukb$death.0 <- ifelse((ukb$f.40000.0.0 > ukb$f.53.0.0) == T, 1, 0)
+
+
+dscrp <- dplyr::select(ukb, f.31.0.0, f.738.0.0, f.21000.0.0, f.2443.0.0, f.20116.0.0, f.1558.0.0, f.22040.0.0, f.54.0.0,
+                       f.21003.0.0, f.21003.2.0, f.189.0.0,  
+                       angina.0, heartattack.0, f.1200.0.0, education.0, ethn.0,
+                       depr_l.0, mean_hr.0, mean_sbp.0, mean_sbp.2, mean_dbp.0, mean_dbp.2, 
+                       f.21001.0.0, htn_meds_count.0, depr_meds_count.0, depr_c.0, depr_c.2, wb.0, 
+                       wb.2, phq9.0, high_bp.0, high_bp.2, death.0)
+
+dscrp$angina.0 <- factor(dscrp$angina.0, levels=c(0, 1), 
+                         labels=c("No diagnosed angina or unknown", "Diagnosed angina"))
+dscrp$heartattack.0 <- factor(dscrp$heartattack.0, levels=c(0, 1), 
+                              labels=c("No diagnosed heart attack or unknown", 
+                                       "Diagnosed heart attack"))
+dscrp$depr_l.0 <- factor(dscrp$depr_l.0, levels=c(0, 1), 
+                         labels=c("No diagnosed depression or unknown", "Diagnosed depression"))
+dscrp$high_bp.0 <- factor(dscrp$high_bp.0, levels=c(0, 1, 2), 
+                          labels=c("No diagnosed HTN or unknown", "Diagnosed HTN", 
+                                   "P-value / Effect size"))
+dscrp$high_bp.2 <- factor(dscrp$high_bp.2, levels=c(0, 1), 
+                          labels=c("No diagnosed HTN or unknown", "Diagnosed HTN"))
+dscrp$death.0 <- factor(dscrp$death.0, levels=c(0, 1), 
+                          labels=c("Alive or unknown", "Died"))
+
+# add meaningful labels
+label(dscrp$f.31.0.0) <- "Gender"
+label(dscrp$f.21003.0.0) <- "Age (years)"
+label(dscrp$f.21003.2.0) <- "Age (years)"
+#units(ukb$f.21003.0.0) <- "years"
+label(dscrp$f.738.0.0) <- "Household income (£)"
+label(dscrp$f.189.0.0) <- "Townsend deprivation index"
+label(dscrp$f.21000.0.0) <- "Ethnic background"
+label(dscrp$f.2443.0.0) <- "Diabetes"
+label(dscrp$f.20116.0.0) <- "Smoking"
+label(dscrp$f.1558.0.0) <- "Alcohol consumption"
+label(dscrp$f.22040.0.0) <- "Physical activity (minutes/week)"
+label(dscrp$angina.0) <- "Angina"
+label(dscrp$heartattack.0) <- "Heart attack"
+label(dscrp$depr_l.0) <- "Lifetime depression"
+label(dscrp$mean_hr.0) <- "Heart rate (beats/min)"
+label(dscrp$mean_sbp.0) <- "Systolic blood pressure (mmHg)"
+label(dscrp$mean_sbp.2) <- "Systolic blood pressure (mmHg)"
+label(dscrp$mean_dbp.0) <- "Diastolic blood pressure (mmHg)"
+label(dscrp$mean_dbp.2) <- "Diastolic blood pressure (mmHg)"
+label(dscrp$f.21001.0.0) <- "BMI (kg/m2)"
+label(dscrp$htn_meds_count.0) <- "No. antihypertensive medication"
+label(dscrp$depr_meds_count.0) <- "No. antidepressant medication"
+label(dscrp$depr_c.0) <- "Current depressive symptoms"
+label(dscrp$depr_c.2) <- "Current depressive symptoms (2nd follow-up)"
+label(dscrp$wb.0) <- "Well-being"
+label(dscrp$wb.2) <- "Well-being (2nd follow-up)"
+label(dscrp$phq9.0) <- "PHQ-9 depressive symptoms (1st follow-up)"
+label(dscrp$high_bp.0) <- "Diagnosed hypertension"
+label(dscrp$high_bp.2) <- "Diagnosed hypertension (2nd follow-up)"
+
+
+#descriptives
+table1(~ f.31.0.0 + f.21003.0.0 + f.738.0.0 + f.189.0.0 + f.21000.0.0 + f.2443.0.0 + f.20116.0.0 +
+         f.1558.0.0 + f.22040.0.0 + angina.0 + heartattack.0 + depr_l.0 + mean_hr.0 + mean_sbp.0 + 
+         mean_dbp.0 + f.21001.0.0 + htn_meds_count.0 + depr_meds_count.0 + depr_c.0 + depr_c.2 + 
+         wb.0 + wb.2 + phq9.0 + high_bp.0 | death.0, data=dscrp)
+
+# shortened descriptives, baseline
+table1(~ f.31.0.0 + f.21003.0.0 + f.189.0.0 + mean_sbp.0 + 
+         mean_dbp.0 + mean_hr.0 + f.21001.0.0 + f.2443.0.0 +
+         angina.0 + heartattack.0 + depr_l.0 + htn_meds_count.0 + depr_meds_count.0 + 
+         depr_c.0 + wb.0 + high_bp.0 | death.0, data=dscrp)
+
+
+# Assess cross-sectional associations in non-surviving sample 
+### prepare data
+dat <- ukb %>% filter(., death.0 == 1) %>% dplyr::select(., f.eid, depr_c.0, wb.0, mean_sbp.0, high_bp.0, htn_meds_count.0,
+                     f.21003.0.0, f.31.0.0, angina.0, heartattack.0, f.2443.0.0, depr_l.0, 
+                     f.21001.0.0, mean_hr.0)
+dat$f.31.0.0 <- as.numeric(dat$f.31.0.0)
+dat$f.2443.0.0 <- as.numeric(dat$f.2443.0.0)
+
+# define predictors and covariates
+predictors <- c("mean_sbp.0", "high_bp.0", "htn_meds_count.0")
+covs <- c("f.21003.0.0", "f.31.0.0", "angina.0", "heartattack.0", "f.2443.0.0", "depr_l.0",
+          "f.21001.0.0", "mean_hr.0")
+
+### depressive mood
+outcome <- "depr_c.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, depr_c.0, mean_sbp.0, high_bp.0,
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0,
+                                                     f.21001.0.0, mean_hr.0))))
+
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_dead <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_dead)
+car::vif(mdl_fit_dead)
+
+# calculate delta adj. r squared
+summary(mdl_fit_dead)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+### well-being
+outcome <- "wb.0"
+dat_scaled <- data.frame(scale(na.omit(dplyr::select(dat, wb.0, mean_sbp.0, high_bp.0,
+                                                     htn_meds_count.0, f.21003.0.0, f.31.0.0, 
+                                                     angina.0, heartattack.0, f.2443.0.0, depr_l.0,
+                                                     f.21001.0.0, mean_hr.0))))
+
+# null model (only covariates)
+mdl <- as.formula(paste(paste(outcome), paste(covs, collapse = " + "), sep = " ~ "))
+mdl_fit <- lm(mdl, data=dat_scaled)
+summary(mdl_fit)
+# with predictors
+mdl <- as.formula(paste(paste(outcome), paste(paste(predictors, collapse = " + "), 
+                                              paste(covs, collapse = " + "), sep = " + "), 
+                        sep = " ~ "))
+mdl_fit_dead_wb.0 <- lm(mdl, data=dat_scaled)
+summary(mdl_fit_dead_wb.0)
+car::vif(mdl_fit_dead_wb.0)
+
+# calculate delta adj. r squared
+summary(mdl_fit_dead_wb.0)$adj.r.squared - summary(mdl_fit)$adj.r.squared
+
+# plot and nicer summary
+summ(mdl_fit_dead, confint = TRUE, digits = 3)
+summ(mdl_fit_dead_wb.0, confint = TRUE, digits = 3)
+
+```
+
+### Linear Mixed Effects analysis
+
+```{r, echo=TRUE}
+library(lme4)
+
+# depressive symptoms
+d_long <- dplyr::select(ukb_lbl, f.eid, depr_c.0, depr_c.2, mean_sbp.0, mean_sbp.2, high_bp.0, high_bp.2,
+                        htn_meds_count.0, htn_meds_count.2, f.21003.0.0, f.31.0.0, angina.0, heartattack.0,
+                        f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0)
+d_long <- unlab(d_long)
+
+d_long <- d_long %>% 
+  pivot_longer(
+   cols = c(2:9),
+   names_to = c(".value","assessment"),
+   names_pattern = "(.*)(.)$",
+   values_drop_na = FALSE)
+
+d_long <- d_long %>% group_by(f.eid) %>% filter(n()>1)
+
+# null model
+lmeFit.p0 <- lmer(depr_c. ~ assessment + mean_sbp. + high_bp. + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long)
+
+# full model
+lmeFit.p <- lmer(depr_c. ~ assessment*mean_sbp. + assessment*high_bp. + mean_sbp.*high_bp. + htn_meds_count. +
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long)
+
+anova(lmeFit.p0,lmeFit.p) # p=0.01367
+
+#drop1(lmeFit.p, test="Chisq")
+
+
+# test which interactions are significant
+lmeFit.p0.1 <- lmer(depr_c. ~ assessment*mean_sbp. + assessment*high_bp. + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long)
+
+anova(lmeFit.p0.1,lmeFit.p) # sbp*high_bp ns
+
+lmeFit.p0.2 <- lmer(depr_c. ~ assessment*mean_sbp. + mean_sbp.*high_bp. + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long)
+
+anova(lmeFit.p0.2,lmeFit.p) # high_bp*time ns
+
+lmeFit.p0.3 <- lmer(depr_c. ~ assessment*high_bp. + mean_sbp.*high_bp. + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long)
+
+anova(lmeFit.p0.3,lmeFit.p) # sbp*time p=0.00116
+
+# reduced full model to test main effect of HTN
+d_long_2 = d_long[!is.na(d_long$high_bp.),]
+lmeFit.p.1 <- lmer(depr_c. ~ mean_sbp.*assessment + high_bp. + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long_2)
+# reduced null model
+lmeFit.p0.4 <- lmer(depr_c. ~ mean_sbp.*assessment + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long_2)
+
+anova(lmeFit.p.1, lmeFit.p0.4) # main effect HTN p< 2.2e-16
+summary(lmeFit.p.1)
+
+# well-being
+d_long <- dplyr::select(ukb_lbl, f.eid, wb.0, wb.2, mean_sbp.0, mean_sbp.2, high_bp.0, high_bp.2,
+                        htn_meds_count.0, htn_meds_count.2, f.21003.0.0, f.31.0.0, angina.0, heartattack.0,
+                        f.2443.0.0, depr_l.0, f.21001.0.0, mean_hr.0)
+d_long <- unlab(d_long)
+#d_long <- drop_na(d_long)
+
+d_long <- d_long %>% 
+  pivot_longer(
+   cols = c(2:9),
+   names_to = c(".value","assessment"),
+   names_pattern = "(.*)(.)$",
+   values_drop_na = FALSE)
+
+d_long <- d_long %>% group_by(f.eid) %>% filter(n()>1)
+
+# null model
+lmeFit.p0 <- lmer(wb. ~ assessment + mean_sbp. + high_bp. + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long)
+
+# full model
+lmeFit.p <- lmer(wb. ~ assessment*mean_sbp. + assessment*high_bp. + mean_sbp.*high_bp. + htn_meds_count. +
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long)
+
+anova(lmeFit.p0,lmeFit.p) # ns p=0.1452
+
+
+# reduced full model to test main effect of HTN
+d_long_2 = d_long[!is.na(d_long$high_bp.),]
+lmeFit.p.1 <- lmer(wb. ~ mean_sbp.*assessment + high_bp. + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long_2)
+# reduced null model
+lmeFit.p0.1 <- lmer(wb. ~ mean_sbp.*assessment + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long_2)
+
+anova(lmeFit.p.1, lmeFit.p0.1) # main effect HTN p< 2.2e-16
+summary(lmeFit.p.1)
+
+# reduced full model to test main effect of HTN
+d_long_2 = d_long[!is.na(d_long$mean_sbp.),]
+lmeFit.p.2 <- lmer(wb. ~ high_bp.*assessment + mean_sbp. + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long_2)
+# reduced null model
+lmeFit.p0.2 <- lmer(wb. ~ high_bp.*assessment + htn_meds_count. + 
+                    f.21003.0.0 + f.31.0.0 + angina.0 + heartattack.0 +
+                        f.2443.0.0 + depr_l.0 + f.21001.0.0 + mean_hr.0 +
+                    (1 | f.eid), data = d_long_2)
+
+anova(lmeFit.p.2, lmeFit.p0.2) # main effect SBP p< 2.2e-16
+summary(lmeFit.p.2)
+
+
+```
+
+
